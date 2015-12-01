@@ -1,0 +1,6 @@
+01-makefile.patch
+02-starter.patch
+03-qt5scintilla.patch
+04-paths.patch
+05-use-debian-ruby.patch
+06-remove-rpi-volume.patch

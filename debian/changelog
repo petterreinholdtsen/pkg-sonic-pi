@@ -1,0 +1,49 @@
+sonic-pi (2.8.0-0ppa1~wily7) wily; urgency=low
+
+  * fix compatability of ruby build script for Ubuntu 14.04 Trusty
+
+ -- Hanno Zulla <kontakt@hanno.de>  Tue, 01 Dec 2015 11:43:00 +0100
+
+sonic-pi (2.8.0-0ppa1~trusty6) trusty; urgency=low
+
+  * use gem2deb rules for building ruby shared libs
+  * detect RPi soundcard at runtime
+
+ -- Hanno Zulla <kontakt@hanno.de>  Tue, 01 Dec 2015 10:30:00 +0100
+
+sonic-pi (2.8.0-0ppa1~trusty5) trusty; urgency=low
+
+  * fix compatability of ruby build script for Ubuntu 14.04 Trusty
+
+ -- Hanno Zulla <kontakt@hanno.de>  Fri, 27 Nov 2015 13:02:00 +0100
+
+sonic-pi (2.8.0-0ppa1~trusty4) trusty; urgency=low
+
+  * Don't require executable bit for compile-extensions-all.rb
+
+ -- Hanno Zulla <kontakt@hanno.de>  Fri, 27 Nov 2015 12:36:00 +0100
+
+sonic-pi (2.8.0-0ppa1~trusty3) trusty; urgency=low
+
+  * Making sure that the server is run with the system's ruby and
+    that vendor libs are built for all supported versions of ruby
+
+ -- Hanno Zulla <kontakt@hanno.de>  Fri, 27 Nov 2015 12:19:00 +0100
+
+sonic-pi (2.8.0-0ppa1~trusty2) trusty; urgency=low
+
+  * Some minor improvements to packaging
+
+ -- Hanno Zulla <kontakt@hanno.de>  Thu, 26 Nov 2015 13:06:00 +0100
+
+sonic-pi (2.8.0-0ppa1~trusty1) trusty; urgency=low
+
+  * Update to upstream release v2.8.0 - "Karlsruhe"
+
+ -- Hanno Zulla <kontakt@hanno.de>  Wed, 25 Nov 2015 09:45:00 +0100
+
+sonic-pi (2.7.0-0ppa1~trusty7) trusty; urgency=low
+
+  * Initial packaging release of upstream release v2.7.0 - "Rerezzed"
+
+ -- Hanno Zulla <kontakt@hanno.de>  Tue, 24 Nov 2015 16:40:00 +0100

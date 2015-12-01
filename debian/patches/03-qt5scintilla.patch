@@ -1,0 +1,22 @@
+Index: sonic-pi-2.8.0/app/gui/qt/SonicPi.pro
+===================================================================
+--- sonic-pi-2.8.0.orig/app/gui/qt/SonicPi.pro	2015-11-25 09:46:49.057184006 +0100
++++ sonic-pi-2.8.0/app/gui/qt/SonicPi.pro	2015-11-25 09:46:49.053184123 +0100
+@@ -19,7 +19,7 @@
+ 
+ # -- Change to match the location of QScintilla on your system
+ #
+- LIBS += -L/Users/sam/Downloads/tmp/QScintilla-gpl-2.9/Qt4Qt5 -lqscintilla2
++ LIBS += -L/Users/sam/Downloads/tmp/QScintilla-gpl-2.9/Qt4Qt5 -lqt5scintilla2
+  INCLUDEPATH += /Users/sam/Downloads/tmp/QScintilla-gpl-2.9/Qt4Qt5
+  DEPENDPATH += /Users/sam/Downloads/tmp/QScintilla-gpl-2.9/Qt4Qt5
+ # --
+@@ -106,7 +106,7 @@
+ RC_FILE = SonicPi.rc
+ 
+ ICON = images/app.icns
+-LIBS         += -lqscintilla2
++LIBS         += -lqt5scintilla2
+ 
+ win32 {
+ 	install_qsci.files = $$[QT_INSTALL_LIBS]\qscintilla2.dll

@@ -1,0 +1,18 @@
+Index: sonic-pi-2.8.0/Makefile
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ sonic-pi-2.8.0/Makefile	2015-12-01 11:41:53.383377060 +0100
+@@ -0,0 +1,13 @@
++all: app/server/rb-native app/gui/qt/sonic-pi extra/sonic-pi.png
++
++extra/sonic-pi.png:
++	mkdir -p extra && \
++	cp app/gui/qt/images/icon-smaller.png extra/sonic-pi.png
++
++app/server/rb-native:
++	cd app/server/bin && \
++	ruby -e 'require "ruby_debian_dev"; include RubyDebianDev; SUPPORTED_RUBY_VERSIONS.each { |v, b| system("#{b} ./compile-extensions.rb") }'
++
++app/gui/qt/sonic-pi:
++	cd app/gui/qt && \
++	./rp-build-app

@@ -1,0 +1,132 @@
+Index: sonic-pi-2.8.0/app/gui/qt/mainwindow.cpp
+===================================================================
+--- sonic-pi-2.8.0.orig/app/gui/qt/mainwindow.cpp	2015-12-01 10:40:07.190450483 +0100
++++ sonic-pi-2.8.0/app/gui/qt/mainwindow.cpp	2015-12-01 10:40:07.186450503 +0100
+@@ -674,7 +674,7 @@
+     if (QCoreApplication::applicationDirPath().startsWith("/usr/bin")) {
+       
+       // Sonic Pi is installed on desktop Linux from a binary package
+-      prg_path = "ruby";
++      prg_path = "/usr/bin/ruby";
+       prg_arg = "/usr/lib/sonic-pi/server/bin/sonic-pi-server.rb";
+       sample_path = "/usr/share/sonic-pi/samples";
+       
+@@ -699,7 +699,7 @@
+       QFile file(prg_path);
+       if(!file.exists()) {
+         // use system ruby if bundled ruby doesn't exist
+-        prg_path = "ruby";
++        prg_path = "/usr/bin/ruby";
+       }
+ 
+       prg_arg = root + "/app/server/bin/sonic-pi-server.rb";
+Index: sonic-pi-2.8.0/app/server/bin/compile-extensions.rb
+===================================================================
+--- sonic-pi-2.8.0.orig/app/server/bin/compile-extensions.rb	2015-12-01 10:40:21.274382863 +0100
++++ sonic-pi-2.8.0/app/server/bin/compile-extensions.rb	2015-12-01 10:41:42.842178697 +0100
+@@ -14,6 +14,8 @@
+ 
+ require 'fileutils'
+ 
++require 'rbconfig'
++ruby_api = RbConfig::CONFIG['ruby_version']
+ os = case RUBY_PLATFORM
+      when /.*arm.*-linux.*/
+        :raspberry
+@@ -27,7 +29,7 @@
+        RUBY_PLATFORM
+      end
+ 
+-native_dir = File.dirname(__FILE__) + '/../rb-native/' + os.to_s + '/' + "#{RUBY_VERSION}p#{RUBY_PATCHLEVEL}"
++native_dir = File.dirname(__FILE__) + "/../rb-native/#{os}/#{ruby_api}"
+ puts "Clearing #{native_dir}"
+ FileUtils.rm_rf native_dir
+ puts "Creating #{native_dir}"
+Index: sonic-pi-2.8.0/app/server/core.rb
+===================================================================
+--- sonic-pi-2.8.0.orig/app/server/core.rb	2015-12-01 10:40:07.170450587 +0100
++++ sonic-pi-2.8.0/app/server/core.rb	2015-12-01 10:42:25.554178455 +0100
+@@ -17,6 +17,8 @@
+ ## This core file sets up the load path and applies any necessary monkeypatches.
+ 
+ ## Ensure native lib dir is available
++require 'rbconfig'
++ruby_api = RbConfig::CONFIG['ruby_version']
+ os = case RUBY_PLATFORM
+      when /.*arm.*-linux.*/
+        :raspberry
+@@ -29,7 +31,7 @@
+      else
+        RUBY_PLATFORM
+      end
+-$:.unshift "#{File.expand_path("../rb-native", __FILE__)}/#{os}/#{RUBY_VERSION}p#{RUBY_PATCHLEVEL}/"
++$:.unshift "#{File.expand_path("../rb-native", __FILE__)}/#{os}/#{ruby_api}/"
+ 
+ ## Ensure all libs in vendor directory are available
+ Dir["#{File.expand_path("../vendor", __FILE__)}/*/lib/"].each do |vendor_lib|
+Index: sonic-pi-2.8.0/app/server/vendor/atomic/lib/atomic/ruby.rb
+===================================================================
+--- sonic-pi-2.8.0.orig/app/server/vendor/atomic/lib/atomic/ruby.rb	2015-11-20 22:26:11.000000000 +0100
++++ sonic-pi-2.8.0/app/server/vendor/atomic/lib/atomic/ruby.rb	2015-12-01 10:43:22.538268070 +0100
+@@ -12,6 +12,8 @@
+ begin
+   require 'atomic_reference'
+ rescue LoadError
++  require 'rbconfig'
++  ruby_api = RbConfig::CONFIG['ruby_version']
+   os = case RUBY_PLATFORM
+        when /.*arm.*-linux.*/
+          :raspberry
+@@ -24,7 +26,7 @@
+        else
+          RUBY_PLATFORM
+        end
+-  require_relative "../../../../rb-native/#{os}/#{RUBY_VERSION}p#{RUBY_PATCHLEVEL}/atomic_reference"
++  require_relative "../../../../rb-native/#{os}/#{ruby_api}/atomic_reference"
+ 
+ end
+ 
+Index: sonic-pi-2.8.0/app/server/vendor/ruby-prof-0.15.8/lib/ruby-prof.rb
+===================================================================
+--- sonic-pi-2.8.0.orig/app/server/vendor/ruby-prof-0.15.8/lib/ruby-prof.rb	2015-11-20 22:26:11.000000000 +0100
++++ sonic-pi-2.8.0/app/server/vendor/ruby-prof-0.15.8/lib/ruby-prof.rb	2015-12-01 10:43:52.998351529 +0100
+@@ -12,6 +12,8 @@
+     require "ruby_prof"
+   rescue LoadError
+     # Modifications made for Sonic Pi multi-platform compatibility:
++    require 'rbconfig'
++    ruby_api = RbConfig::CONFIG['ruby_version']
+     os = case RUBY_PLATFORM
+          when /.*arm.*-linux.*/
+            :raspberry
+@@ -24,7 +26,7 @@
+          else
+            RUBY_PLATFORM
+          end
+-    require_relative "../../../rb-native/#{os}/#{RUBY_VERSION}p#{RUBY_PATCHLEVEL}/ruby_prof"
++    require_relative "../../../rb-native/#{os}/#{ruby_api}/ruby_prof"
+   end
+   # End modifications
+ 
+Index: sonic-pi-2.8.0/app/server/vendor/rugged/lib/rugged.rb
+===================================================================
+--- sonic-pi-2.8.0.orig/app/server/vendor/rugged/lib/rugged.rb	2015-11-20 22:26:11.000000000 +0100
++++ sonic-pi-2.8.0/app/server/vendor/rugged/lib/rugged.rb	2015-12-01 10:44:22.690453327 +0100
+@@ -10,6 +10,8 @@
+   rescue LoadError
+ 
+     # Modifications made for Sonic Pi multi-platform compatibility:
++    require 'rbconfig'
++    ruby_api = RbConfig::CONFIG['ruby_version']
+     os = case RUBY_PLATFORM
+          when /.*arm.*-linux.*/
+            :raspberry
+@@ -22,7 +24,7 @@
+          else
+            RUBY_PLATFORM
+          end
+-    require_relative "../../../rb-native/#{os}/#{RUBY_VERSION}p#{RUBY_PATCHLEVEL}/rugged"
++    require_relative "../../../rb-native/#{os}/#{ruby_api}/rugged"
+   end
+   # End modifications
+ end

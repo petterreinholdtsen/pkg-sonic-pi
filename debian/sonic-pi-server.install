@@ -1,0 +1,16 @@
+app/server/core.rb                   usr/lib/sonic-pi/server
+app/server/util.rb                   usr/lib/sonic-pi/server
+app/server/bin/sonic-pi-server.rb    usr/lib/sonic-pi/server/bin
+app/server/rb-native                 usr/lib/sonic-pi/server
+app/server/sonicpi                   usr/lib/sonic-pi/server
+app/server/vendor                    usr/lib/sonic-pi/server
+
+# not yet used
+#app/scripts                         usr/lib/sonic-pi/
+
+etc/synthdefs/compiled               usr/share/sonic-pi/synthdefs
+etc/snippets                         usr/share/sonic-pi
+
+etc/doc/*                            usr/share/doc/sonic-pi-server
+app/gui/qt/images/tutorial           usr/share/doc/sonic-pi-server/tutorial/images
+etc/synthdefs/graphviz/pdf/*         usr/share/doc/sonic-pi-server/synthdefs

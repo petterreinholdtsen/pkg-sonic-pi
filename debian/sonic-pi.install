@@ -1,0 +1,3 @@
+app/gui/qt/sonic-pi           usr/bin/
+extra/sonic-pi.desktop        usr/share/applications/
+extra/sonic-pi.png            usr/share/pixmaps/

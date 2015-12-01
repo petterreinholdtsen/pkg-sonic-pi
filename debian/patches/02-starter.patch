@@ -1,0 +1,15 @@
+Index: sonic-pi-2.8.0/extra/sonic-pi.desktop
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ sonic-pi-2.8.0/extra/sonic-pi.desktop	2015-11-25 09:46:42.213387079 +0100
+@@ -0,0 +1,10 @@
++[Desktop Entry]
++Encoding=UTF-8
++Version=1.0
++Type=Application
++Exec=sonic-pi
++Icon=/usr/share/pixmaps/sonic-pi.png
++Terminal=false
++Name=Sonic Pi
++Comment=Learn programming and computer science while creating music
++Categories=Application;Development;

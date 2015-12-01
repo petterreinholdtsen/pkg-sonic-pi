@@ -1,0 +1,4 @@
+etc/samples       usr/share/sonic-pi
+etc/buffers       usr/share/sonic-pi
+# not yet used
+# etc/wavetables  usr/share/sonic-pi

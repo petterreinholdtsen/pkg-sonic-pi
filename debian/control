@@ -1,0 +1,30 @@
+Source: sonic-pi
+Section: sound
+Priority: optional
+Maintainer: Hanno Zulla <hanno@esprimo>
+Build-Depends: debhelper (>= 9), cmake, pkg-config, qt5-default, qttools5-dev, qttools5-dev-tools, libffi-dev, libqt5scintilla2-dev, ruby, ruby-all-dev
+Standards-Version: 3.9.6
+Homepage: http://sonic-pi.net
+
+Package: sonic-pi
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, sonic-pi-server, libqt5scintilla2-12v5 | libqt5scintilla2-11, libqt5scintilla2-l10n, libqt5core5a, libqt5network5, libqt5concurrent5, libqt5gui5, libqt5widgets5
+Description: Qt-based IDE for Sonic Pi
+ A free live coding synth for everyone originally designed to support
+ computing and music lessons within schools. Use code to compose and
+ perform in classical and contemporary styles ranging from Canons to
+ Dubstep.
+
+Package: sonic-pi-server
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ruby, sonic-pi-samples, supercollider-server, supercollider-sc3-plugins, jackd2, libffi6
+Description: Live Coding for Everyone
+ A free live coding synth for everyone originally designed to support
+ computing and music lessons within schools. Use code to compose and
+ perform in classical and contemporary styles ranging from Canons to
+ Dubstep.
+
+Package: sonic-pi-samples
+Architecture: all
+Description: Audio samples for Sonic Pi
+ The audio samples used by Sonic Pi.
