@@ -1,3 +1,4 @@
+## encoding: utf-8
 #--
 # This file is part of Sonic Pi: http://sonic-pi.net
 # Full project source: https://github.com/samaaron/sonic-pi
@@ -63,6 +64,46 @@ module SonicPi
         examples:       [
       "(knit 1, 5)    #=> (ring 1, 1, 1, 1, 1)",
       "(knit :e2, 2, :c2, 3) #=> (ring :e2, :e2, :c2, :c2, :c2)"
+    ]
+
+    def spread(num_accents, size, *args)
+      args_h = resolve_synth_opts_hash_or_array(args)
+      beat_rotations = args_h[:rotate]
+      res = []
+      # if someone requests 9 accents in a bar of 8 beats
+      # default to filling the output with accents
+      if num_accents > size
+        res = [true] * size
+        return res.ring
+      end
+
+      size.times do |i|
+        # makes a boolean based on the index
+        # true is an accent, false is a rest
+        res << ((i * num_accents % size) < num_accents)
+      end
+
+      if beat_rotations && beat_rotations.is_a?(Numeric)
+        beat_rotations = beat_rotations.abs
+        while beat_rotations > 0 do
+          beat_rotations -= 1 if res.rotate!.first == true
+        end
+
+        res.ring
+      else
+        res.ring
+      end
+    end
+    doc name:           :spread,
+        introduced:     Version.new(2,4,0),
+        summary:        "Distribute a number of accents evenly across a ring of specified size",
+        args:           [[:num_accents, :number], [:size, :number]],
+        opts:           {rotate: "rotate to the next strong beat allowing for easy permutations of the orignal rhythmic grouping (see example)"},
+        accepts_block:  false,
+        doc:            "Creates a new ring of boolean values which space a given number of accents as evenly as possible throughout a bar. This is an implementation of the process described in 'The Euclidean Algorithm Generates Traditional Musical Rhythms' (Toussaint 2005).",
+        examples:       [
+      "(spread 5, 13)    #=> (ring true, false, false, true, false, false, true, false) a spacing of 332",
+      "(spread 3, 8, rotate: 1) #=> (ring true, false, false, true, false, true, false, false) a spacing of 323"
     ]
 
     def range(start, finish, step_size=1)
@@ -272,7 +313,7 @@ end
     doc name:           :at,
         introduced:     Version.new(2,1,0),
         summary:        "Run a block at the given times",
-        doc:            "Given a list of times, run the block once after waiting each given time. If passed an optional params list, will pass each param individually to each block call. If params is smaller than args, the values will rotate through. If no params are passed, the times are fed as the default params. If the block is given 2 args, both the times and the params are fed through. Finally, a third parameter to the block will receive the index of the time.",
+        doc:            "Given a list of times, run the block once after waiting each given time. If passed an optional params list, will pass each param individually to each block call. If size of params list is smaller than the times list, the param values will act as rings (rotate through). If the block is given 1 arg, the times are fed through. If the block is given 2 args, both the times and the params are fed through. A third block arg will receive the index of the time.",
         args:           [[:times, :list],
                          [:params, :list]],
         opts:           {:params=>nil},
@@ -335,6 +376,43 @@ puts version.minor # => Prints out the minor version number such as 0",
 puts version.patch # => Prints out the patch level for this version such as 0"]
 
 
+    ## Hide this fn as it currently doesn't work across all platforms
+    ## due to encoding issues.
+    def __spark(*values)
+      if values.first.is_a?(Array) && values.length == 1
+        values = values.first
+      end
+
+      return "" if values.length == 0
+      return "spark error: can't use nested arrays" if Array(values).flatten.length != Array(values).length
+      return "spark error: arguments should be numeric" if values.any? {|x| not (x.is_a? Numeric) }
+
+      #implementation stolen from @jcromartie https://gist.github.com/jcromartie/1367091
+      @ticks = %w[▁ ▂ ▃ ▄ ▅ ▆ ▇]
+      values = values.map { |x| x.to_f rescue 0.0 }
+      min = values.min
+      range = values.max - values.min
+      scale = @ticks.length - 1
+
+      # Guard lists of length 1 or repeating vals
+      range = 1.0 if range.to_f == 0.0
+
+      values.map {|x|
+        @ticks[(((x - min) / range) * scale).round]
+      }.join
+    end
+    doc name:         :__spark,
+      hide:           true,
+      introduced:     Version.new(2,4,0),
+      summary:        "Render a list of numeric values as a spark graph/bar chart",
+      args:           [],
+      opts:           nil,
+      accepts_block:  false,
+      doc:            "Given a list of numeric values, this method turns them into a string of bar heights. Useful for quickly graphing the shape of an array. Remember to use puts so you can see the output.",
+      examples:       [
+        "puts (spark (range 1, 5))    #=> ▁▃▅█",
+        "puts (spark (range 1, 5).to_a.shuffle) #=> ▃█▅▁"
+    ]
 
 
     def defonce(name, *opts, &block)
