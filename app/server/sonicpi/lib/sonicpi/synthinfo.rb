@@ -1,3 +1,17 @@
+#--
+# This file is part of Sonic Pi: http://sonic-pi.net
+# Full project source: https://github.com/samaaron/sonic-pi
+# License: https://github.com/samaaron/sonic-pi/blob/master/LICENSE.md
+#
+# Copyright 2013, 2014 by Sam Aaron (http://sam.aaron.name).
+# All rights reserved.
+#
+# Permission is granted for use, copying, modification, distribution,
+# and distribution of modified versions of this work as long as this
+# notice is included.
+#++
+require_relative "version"
+
 module SonicPi
 
   class BaseInfo
@@ -37,6 +51,10 @@ module SonicPi
 
     def synth_name
       raise "Please implement synth_name for #{self.class}"
+    end
+
+    def introduced
+      raise "please implement introduced version for synth info: #{self.class}"
     end
 
     def args
@@ -332,7 +350,7 @@ module SonicPi
 
         :res =>
         {
-          :doc => "Filter resonance. Smaller values produce more resonance.",
+          :doc => "Filter resonance. Large amounts of resonance (a res: near 0) can create a whistling sound around the cutoff frequency. Smaller values produce more resonance.",
           :validations => [v_positive_not_zero(:res)],
           :modulatable => true
         },
@@ -416,6 +434,10 @@ module SonicPi
       "Dull Bell"
     end
 
+    def introduced
+      Version.new(2,0,0)
+    end
+
     def synth_name
       "dull_bell"
     end
@@ -449,6 +471,10 @@ module SonicPi
       "Pretty Bell"
     end
 
+    def introduced
+      Version.new(2,0,0)
+    end
+
     def synth_name
       "pretty_bell"
     end
@@ -461,6 +487,10 @@ module SonicPi
   class Beep < SonicPiSynth
     def name
       "Sine Wave"
+    end
+
+    def introduced
+      Version.new(2,0,0)
     end
 
     def synth_name
@@ -496,6 +526,10 @@ module SonicPi
       "Saw Wave"
     end
 
+    def introduced
+      Version.new(2,0,0)
+    end
+
     def synth_name
       "saw"
     end
@@ -509,6 +543,10 @@ module SonicPi
   class Pulse < SonicPiSynth
     def name
       "Pulse Wave"
+    end
+
+    def introduced
+      Version.new(2,0,0)
     end
 
     def synth_name
@@ -549,6 +587,10 @@ module SonicPi
       "Triangle Wave"
     end
 
+    def introduced
+      Version.new(2,0,0)
+    end
+
     def synth_name
       "tri"
     end
@@ -561,6 +603,10 @@ module SonicPi
   class DSaw < SonicPiSynth
     def name
       "Detuned Saw wave"
+    end
+
+    def introduced
+      Version.new(2,0,0)
     end
 
     def synth_name
@@ -600,6 +646,10 @@ module SonicPi
   class FM < SonicPiSynth
     def name
       "Basic FM synthesis"
+    end
+
+    def introduced
+      Version.new(2,0,0)
     end
 
     def synth_name
@@ -676,6 +726,10 @@ module SonicPi
       "Basic FM synthesis with frequency modulation."
     end
 
+    def introduced
+      Version.new(2,0,0)
+    end
+
     def synth_name
       "mod_fm"
     end
@@ -701,6 +755,10 @@ module SonicPi
   class ModSaw < SonicPiSynth
     def name
       "Modulated Saw Wave"
+    end
+
+    def introduced
+      Version.new(2,0,0)
     end
 
     def synth_name
@@ -747,6 +805,10 @@ module SonicPi
   class ModDSaw < SonicPiSynth
     def name
       "Modulated Detuned Saw Waves"
+    end
+
+    def introduced
+      Version.new(2,0,0)
     end
 
     def synth_name
@@ -798,6 +860,10 @@ module SonicPi
       "Modulated Sine Wave"
     end
 
+    def introduced
+      Version.new(2,0,0)
+    end
+
     def synth_name
       "mod_sine"
     end
@@ -842,6 +908,10 @@ module SonicPi
   class ModTri < SonicPiSynth
     def name
       "Modulated Triangle Wave"
+    end
+
+    def introduced
+      Version.new(2,0,0)
     end
 
     def synth_name
@@ -890,6 +960,10 @@ module SonicPi
       "Modulated Pulse"
     end
 
+    def introduced
+      Version.new(2,0,0)
+    end
+
     def synth_name
       "mod_pulse"
     end
@@ -936,6 +1010,10 @@ module SonicPi
   class TB303 < SonicPiSynth
     def name
       "TB-303 Emulation"
+    end
+
+    def introduced
+      Version.new(2,0,0)
     end
 
     def synth_name
@@ -1022,6 +1100,10 @@ module SonicPi
       "Supersaw"
     end
 
+    def introduced
+      Version.new(2,0,0)
+    end
+
     def synth_name
       "supersaw"
     end
@@ -1060,6 +1142,10 @@ module SonicPi
   class Zawa < SonicPiSynth
     def name
       "Zawa"
+    end
+
+    def introduced
+      Version.new(2,0,0)
     end
 
     def synth_name
@@ -1186,6 +1272,10 @@ module SonicPi
       "The Prophet"
     end
 
+    def introduced
+      Version.new(2,0,0)
+    end
+
     def synth_name
       "prophet"
     end
@@ -1228,6 +1318,10 @@ end
       "Noise"
     end
 
+    def introduced
+      Version.new(2,0,0)
+    end
+
     def synth_name
       "noise"
     end
@@ -1265,18 +1359,26 @@ end
       "Grey Noise"
     end
 
+    def introduced
+      Version.new(2,0,0)
+    end
+
     def synth_name
       "gnoise"
     end
 
     def doc
-      "Generates noise which results from flipping random bits in a word.  The spectrum is emphasized towards lower frequencies. Useful for generating percussive sounds such as snares and hand claps. Also useful for simulating wind or sea effects."
+      "Generates noise which results from flipping random bits in a word.  The spectrum is emphasised towards lower frequencies. Useful for generating percussive sounds such as snares and hand claps. Also useful for simulating wind or sea effects."
     end
   end
 
   class BNoise < Noise
     def name
       "Brown Noise"
+    end
+
+    def introduced
+      Version.new(2,0,0)
     end
 
     def synth_name
@@ -1294,6 +1396,10 @@ end
       "Pink Noise"
     end
 
+    def introduced
+      Version.new(2,0,0)
+    end
+
     def synth_name
       "pnoise"
     end
@@ -1307,6 +1413,10 @@ end
   class CNoise < Noise
     def name
       "Clip Noise"
+    end
+
+    def introduced
+      Version.new(2,0,0)
     end
 
     def synth_name
@@ -1326,6 +1436,10 @@ end
   class SoundIn < StudioInfo
     def name
       "Sound In"
+    end
+
+    def introduced
+      Version.new(2,0,0)
     end
 
     def synth_name
@@ -1350,6 +1464,10 @@ end
   class BasicMonoPlayer < StudioInfo
     def name
       "Basic Mono Sample Player (no env)"
+    end
+
+    def introduced
+      Version.new(2,0,0)
     end
 
     def synth_name
@@ -1377,6 +1495,10 @@ end
       "Basic Stereo Sample Player (no env)"
     end
 
+    def introduced
+      Version.new(2,0,0)
+    end
+
     def synth_name
       "basic_stereo_player"
     end
@@ -1389,6 +1511,10 @@ end
   class MonoPlayer < StudioInfo
     def name
       "Mono Sample Player"
+    end
+
+    def introduced
+      Version.new(2,0,0)
     end
 
     def synth_name
@@ -1476,6 +1602,10 @@ end
       "Stereo Sample Player"
     end
 
+    def introduced
+      Version.new(2,0,0)
+    end
+
     def synth_name
       "stereo_player"
     end
@@ -1488,6 +1618,10 @@ end
   class BasicMixer < BaseMixer
     def name
       "Basic Mixer"
+    end
+
+    def introduced
+      Version.new(2,0,0)
     end
 
     def synth_name
@@ -1538,6 +1672,10 @@ end
   class FXReverb < FXInfo
     def name
       "Reverb"
+    end
+
+    def introduced
+      Version.new(2,0,0)
     end
 
     def synth_name
@@ -1607,6 +1745,10 @@ end
       "Bitcrusher"
     end
 
+    def introduced
+      Version.new(2,0,0)
+    end
+
     def synth_name
       "fx_bitcrusher"
     end
@@ -1671,6 +1813,10 @@ end
       "Level Amplifier"
     end
 
+    def introduced
+      Version.new(2,0,0)
+    end
+
     def synth_name
       "fx_level"
     end
@@ -1690,6 +1836,10 @@ end
   class FXEcho < FXInfo
     def name
       "Echo"
+    end
+
+    def introduced
+      Version.new(2,0,0)
     end
 
     def synth_name
@@ -1771,6 +1921,10 @@ end
   class FXSlicer < FXInfo
     def name
       "Slicer"
+    end
+
+    def introduced
+      Version.new(2,0,0)
     end
 
     def synth_name
@@ -1911,6 +2065,10 @@ end
       "Wobble"
     end
 
+    def introduced
+      Version.new(2,0,0)
+    end
+
     def synth_name
       "fx_wobble"
     end
@@ -2023,6 +2181,10 @@ end
       "Techno from IXI Lang"
     end
 
+    def introduced
+      Version.new(2,0,0)
+    end
+
     def synth_name
       "fx_ixi_techno"
     end
@@ -2121,6 +2283,10 @@ end
   class FXCompressor < FXInfo
     def name
       "Compressor"
+    end
+
+    def introduced
+      Version.new(2,0,0)
     end
 
     def synth_name
@@ -2239,6 +2405,10 @@ end
       "Resonant Low Pass Filter"
     end
 
+    def introduced
+      Version.new(2,0,0)
+    end
+
     def synth_name
       "fx_rlpf"
     end
@@ -2264,11 +2434,21 @@ end
 
       }
     end
+
+    def doc
+      "Dampens the parts of the signal that are above than the cutoff point (typically the crunchy fizzy harmonic overtones) and keeps the lower parts (typicaly the bass/mid of the sound). behaviour, The resonant part of the resonant low pass filter emphasises/resonates the frequencies around the cutoff point. The amount of emphasis is controlled by the res param with a lower res resulting in greater resonance. High amounts of resonance (rq ~0) can create a whistling sound around the cutoff frequency.
+
+Choose a higher cutoff to keep more of the high frequences/treble of the sound and a lower cutoff to make the sound more dull and only keep the bass."
+    end
   end
 
   class FXNormRLPF < FXRLPF
     def name
       "Normalised Resonant Low Pass Filter"
+    end
+
+    def introduced
+      Version.new(2,0,0)
     end
 
     def synth_name
@@ -2279,6 +2459,16 @@ end
   class FXRHPF < FXInfo
     def name
       "Resonant High Pass Filter"
+    end
+
+    def doc
+      "Dampens the parts of the signal that are lower than the cutoff point (typicaly the bass of the sound) and keeps the higher parts (typically the crunchy fizzy harmonic overtones). The resonant part of the resonant low pass filter emphasises/resonates the frequencies around the cutoff point. The amount of emphasis is controlled by the res param with a lower res resulting in greater resonance. High amounts of resonance (rq ~0) can create a whistling sound around the cutoff frequency.
+
+Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make the sound more light and crispy. "
+    end
+
+    def introduced
+      Version.new(2,0,0)
     end
 
     def synth_name
@@ -2313,14 +2503,24 @@ end
       "Normalised Resonant High Pass Filter"
     end
 
+    def introduced
+      Version.new(2,0,0)
+    end
+
     def synth_name
       "fx_nrhpf"
     end
+
+      "A resonant high pass filter chained to a normaliser. Ensures that the signal is both filtered by a standard high pass filter and then normalised to ensure the amplitude of the final output is constant. A high pass filter will reduce the amplitude of the resulting signal (as some of the sound has been filtered out) the normaliser can compensate for this loss (although will also have the side effect of flattening all dynamics). See doc for hpf."
   end
 
   class FXLPF < FXInfo
     def name
       "Low Pass Filter"
+    end
+
+    def introduced
+      Version.new(2,0,0)
     end
 
     def synth_name
@@ -2357,6 +2557,10 @@ end
       "Normalised Low Pass Filter."
     end
 
+    def introduced
+      Version.new(2,0,0)
+    end
+
     def synth_name
       "fx_nlpf"
     end
@@ -2369,6 +2573,10 @@ end
   class FXHPF < FXInfo
     def name
       "High Pass Filter"
+    end
+
+    def introduced
+      Version.new(2,0,0)
     end
 
     def synth_name
@@ -2398,13 +2606,17 @@ end
       "Normalised High Pass Filter"
     end
 
+    def introduced
+      Version.new(2,0,0)
+    end
+
     def synth_name
       "fx_nhpf"
     end
 
-def doc
+    def doc
       "A high pass filter chained to a normaliser. Ensures that the signal is both filtered by a standard high pass filter and then normalised to ensure the amplitude of the final output is constant. A high pass filter will reduce the amplitude of the resulting signal (as some of the sound has been filtered out) the normaliser can compensate for this loss (although will also have the side effect of flattening all dynamics). See doc for hpf."
-end
+    end
   end
 
   class FXNormaliser < FXInfo
@@ -2412,8 +2624,16 @@ end
       "Normaliser"
     end
 
+    def introduced
+      Version.new(2,0,0)
+    end
+
     def synth_name
       "fx_normaliser"
+    end
+
+    def doc
+      "Raise or lower amplitude of sound to a specified level. Evens out the amplitude of incoming sound across the frequency spectrum by flattening all dynamics."
     end
 
     def arg_defaults
@@ -2424,8 +2644,29 @@ end
         :mix_slide => 0,
         :pre_amp => 1,
         :pre_amp_slide => 0,
+        :level => 1,
+        :level_slide => 0,
         :amp => 1,
         :amp_slide => 0
+      }
+    end
+
+    def specific_arg_info
+      {
+        :level =>
+        {
+          :doc => "The peak output amplitude level to which to normalise the in",
+          :validations => [v_greater_than_oet(:level, 0)],
+          :modulatable => true
+        },
+
+        :level_slide =>
+        {
+          :doc => generic_slide_doc(:level),
+          :validations => [v_positive(:level_slide)],
+          :modulatable => true,
+          :bpm_scale => true
+        }
       }
     end
   end
@@ -2433,6 +2674,10 @@ end
   class FXDistortion < FXInfo
     def name
       "Distortion"
+    end
+
+    def introduced
+      Version.new(2,0,0)
     end
 
     def synth_name
@@ -2483,8 +2728,16 @@ end
       "Pan"
     end
 
+    def introduced
+      Version.new(2,0,0)
+    end
+
     def synth_name
       "fx_pan"
+    end
+
+    def doc
+      "Specify where in the stereo field the sound should be heard. A value of -1 for pan will put the sound in the left speaker, a value of 1 will put the sound in the right speaker and values in between will shift the sound accordingly."
     end
 
     def arg_defaults
@@ -2757,26 +3010,30 @@ end
         doc << arglist
 
 
-        doc << "<p><font size=\"5\", #{hv_face}>"
+        doc << "<p><font size=\"4\", #{hv_face}>"
         doc << "  " << v.doc << "</font></p>\n"
 
-        doc << "<table cellpadding=\"10\">\n"
+        doc << "<p><font size=\"3\", #{hv_face}>\n"
+        doc << "<span style=\"color:white;background-color:darkorange;\">"
+        doc << "Introduced in v" << v.introduced.to_s << "\n</span></p>\n"
+
+        doc << "<table cellpadding=\"8\">\n"
         doc << "<tr><th></th><th></th></tr>\n"
 
         cnt = 0
         v.arg_info.each do |ak, av|
           cnt += 1
           background_colour = cnt.even? ? "#F8F8F8" : "#E8E8E8"
-          key_bg_colour = cnt.even? ? "#FFF0F5" : "#FFE4E1"
+          key_bg_colour = cnt.even? ? "#E6F0FF" : "#B2D1FF"
           doc << "  <tr bgcolor=\"#{background_colour}\">\n"
           doc << "    <td bgcolor=\"#{key_bg_colour}\"><h3><pre> #{ak}:</pre></h3></td>\n"
           doc << "      <td>\n"
           doc << "        <font size=\"4\", #{hv_face}>\n"
           doc << "          #{av[:doc] || 'write me'}<br/></font>\n"
-          doc << "          <font size=\"3\", #{hv_face}>Default: #{av[:default]}<br/>\n"
+          doc << "          <em><font size=\"3\", #{hv_face}>Default: #{av[:default]}<br/>\n"
           doc << "          #{av[:constraints].join(",")}<br/>\n" unless av[:constraints].empty?
           doc << "          #{av[:modulatable] ? "May be changed whilst playing" : "Can not be changed once set"}\n"
-          doc << "       </font>\n"
+          doc << "       </font></em>\n"
           doc << "     </td>\n"
           doc << " </tr>\n"
         end
@@ -2869,7 +3126,7 @@ end
         StereoPlayer.new.arg_info.each do |ak, av|
           cnt += 1
           background_colour = cnt.even? ? "#F8F8F8" : "#E8E8E8"
-          key_bg_colour = cnt.even? ? "#FFF0F5" : "#FFE4E1"
+          key_bg_colour = cnt.even? ? "#E6F0FF" : "#B2D1FF"
           doc << "  <tr bgcolor=\"#{background_colour}\">\n"
           doc << "    <td bgcolor=\"#{key_bg_colour}\"><h3><pre> #{ak}:</pre></h3></td>\n"
           doc << "      <td>\n"

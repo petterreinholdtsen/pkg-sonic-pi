@@ -27,6 +27,7 @@ module SonicPi
           @@docs
         end
 
+        # Generates HTML for Lang part of help system
         def docs_html_map
           hv_face = "face=\"HelveticaNeue-Light,Helvetica Neue Light,Helvetica Neue\""
           res = {}
@@ -35,7 +36,7 @@ module SonicPi
             code = ""
             comments = ""
             s.each_line do |l|
-              m = l.match /(.*?)([^&]#.*)/
+              m = l.match /(.*?)[^&]?(#.*)/
               if m
 
                 code << m[1] << "\n"
@@ -63,15 +64,17 @@ module SonicPi
               html << "<p><font size=\"4\", #{hv_face}>\n"
               html << v[:doc] << "\n</p>\n"
               html << "<p><font size=\"3\", #{hv_face}>\n"
-              html << "Introduced in v" << v[:introduced].to_s << "\n</p>\n"
+              html << "<span style=\"color:white;background-color:darkorange;\">"
+              html << "Introduced in v" << v[:introduced].to_s << "\n</span></p>\n"
 
-              html << "<table cellpadding=\"2\">\n"
+              html << "<table cellpadding=\"8\">\n"
               html << " <tr>\n   <th></th><th></th><th></th>\n </tr>\n"
 
               v[:examples].each_with_index do |e, idx|
 
                 background_colour = idx.even? ? "#F8F8F8" : "#E8E8E8"
-                key_bg_colour = idx.even? ? "#FFF0F5" : "#FFE4E1"
+                key_bg_colour = idx.even? ? "#E6F0FF" : "#B2D1FF"
+
                 html << " <tr bgcolor=\"#{background_colour}\">\n"
                 html << "  <td bgcolor=\"#{key_bg_colour}\"><h3><pre>Example #{idx} </pre></h3></td>\n"
                 lines = "\n" << e.strip.split("\n").map{|l| CGI.escapeHTML(l)}.join("\n")

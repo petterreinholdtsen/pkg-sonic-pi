@@ -25,7 +25,8 @@ require_relative "mods/sound"
 require_relative "gitsave"
 require_relative "lifecyclehooks"
 require_relative "version"
-require_relative "oscval"
+#require_relative "oscval"
+#require_relative "oscevent"
 
 require 'thread'
 require 'fileutils'
@@ -40,7 +41,7 @@ module SonicPi
 
     def initialize(hostname, port, msg_queue, max_concurrent_synths, user_methods)
 
-      @version = Version.new(2, 0, 0)
+      @version = Version.new(2, 0, 1)
 
       @life_hooks = LifeCycleHooks.new
       @msg_queue = msg_queue
@@ -110,6 +111,18 @@ module SonicPi
       __enqueue_multi_message(0, s)
     end
 
+    def __delayed_highlight_message(s)
+      __enqueue_multi_message(4, s)
+    end
+
+    def __delayed_highlight2_message(s)
+      __enqueue_multi_message(5, s)
+    end
+
+    def __delayed_highlight3_message(s)
+      __enqueue_multi_message(6, s)
+    end
+
     def __delayed_user_message(s)
       s = s.inspect unless s.is_a? String
       __enqueue_multi_message(1, s)
@@ -155,7 +168,10 @@ module SonicPi
         end
 
         @job_subthread_mutex.synchronize do
-          t = Thread.new &pause_then_run_blocks_and_msgs
+          t = Thread.new do
+            Thread.current.thread_variable_set(:sonic_pi_thread_group, :scsynth_external_booter)
+            pause_then_run_blocks_and_msgs.call
+          end
           job_subthread_add_unmutexed(__current_job_id, t)
         end
         p.deliver! true
@@ -270,12 +286,11 @@ module SonicPi
       @user_jobs.kill_job j
       @life_hooks.killed(j)
       @life_hooks.exit(j)
-      __info "Stopped run #{j}"
       @msg_queue.push({type: :job, jobid: j, action: :killed})
     end
 
     def __stop_jobs
-      __info "Stopping all running code."
+      __info "Stopping all runs..."
       @user_jobs.each_id do |id|
         __stop_job id
       end
@@ -297,7 +312,13 @@ module SonicPi
       if File.exists? path
         s = IO.read(path)
       end
-      @msg_queue.push({type: "replace-buffer", buffer_id: id, val: s})
+      __replace_buffer(id, s)
+    end
+
+    def __replace_buffer(id, content)
+      id = id.to_s
+      content = content.to_s
+      @msg_queue.push({type: "replace-buffer", buffer_id: id, val: content})
     end
 
     def __beautify_buffer(id, buf)
@@ -345,10 +366,10 @@ module SonicPi
           __no_kill_block do
             @msg_queue.push({type: :job, jobid: id, action: :completed, jobinfo: info})
             @msg_queue.push({type: :error, val: e.message, backtrace: e.backtrace, jobid: id  , jobinfo: info})
+
           end
         end
       end
-
       @user_jobs.add_job(id, job, info)
 
       Thread.new do
@@ -356,11 +377,18 @@ module SonicPi
         Thread.current.thread_variable_set(:sonic_pi_thread_group, "job-#{id}-GC")
         job.join
         __join_subthreads(job)
+
+
         # wait until all synths are dead
+
         @life_hooks.completed(id)
+
         @life_hooks.exit(id)
+
         deregister_job_and_return_subthreads(id)
         @user_jobs.job_completed(id)
+        Kernel.sleep @mod_sound_studio.sched_ahead_time
+        __info "Completed run #{id}"
         @msg_queue.push({type: :job, jobid: id, action: :completed, jobinfo: info})
       end
     end
@@ -400,7 +428,8 @@ module SonicPi
       if name
         if @named_subthreads[name]
           #Don't delay following message, as this method is used for worker thread impl.
-          __info "Skipping thread creation: thread with name #{name.inspect} already exists."
+          __info "Thread #{name.inspect} exists: skipping creation"
+
           t.kill
           job_subthread_rm_unmutexed(job_id, t)
           return false
@@ -470,7 +499,7 @@ module SonicPi
     # so we abort running this thread.
     def wait_for_parent_thread!(parent_t, prom)
       begin
-        prom.get_with_timeout(10, 0.1)
+        prom.get(10)
       rescue
         raise "Parent thread died!" unless parent_t.alive?
         wait_for_parent_thread!(parent_t, prom)

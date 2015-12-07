@@ -56,6 +56,8 @@ protected:
     void closeEvent(QCloseEvent *event);
 
 private slots:
+
+    void unhighlightCode();
     void runCode();
     void stopCode();
     void beautifyCode();
@@ -152,8 +154,10 @@ private:
     QAction *prefsAct;
     QAction *helpAct;
     QAction *textAlignAct;
-    QAction *textIncAct;
-    QAction *textDecAct;
+    QAction *textIncAct1;
+    QAction *textIncAct2;
+    QAction *textDecAct1;
+    QAction *textDecAct2;
 
     QAction *saveAsAct;
     QAction *exitAct;
@@ -169,10 +173,13 @@ private:
     QMap<QString, QString> *map;
 
     QTextEdit *infoPane;
+    QWidget *infoWidg;
     QTextEdit *startupPane;
     QLabel *imageLabel;
     QSlider *raspberryPiSystemVol;
 
+    int currentLine;
+    int currentIndex;
 };
 
 #endif
