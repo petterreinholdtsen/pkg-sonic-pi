@@ -329,7 +329,7 @@ MainWindow::MainWindow(QApplication &app, QSplashScreen &splash) {
   infoPane->setOpenExternalLinks(true);
   infoPane->setFixedSize(600, 615);
   QString html;
-  infoPane->setHtml("<center><img src=\":/images/logo-smaller.png\" height=\"268\" width=\"328\"><pre><font size=\"4\"><font color=\"DeepPink\">A Sound Synthesiser<br>for Live Coding</font><br><br>Designed and developed by Sam Aaron<br>in Cambridge, England<br><br><font color=\"DeepPink\"><a href=\"http://sonic-pi.net\" style=\"text-decoration: none; color:DeepPink\">http://sonic-pi.net</a></font><br><br>For the latest updates follow<br><font color=\"DeepPink\"><a href=\"http://twitter.com/sonic_pi\" style=\"text-decoration: none; color:DeepPink;\">@sonic_pi</a><br></font></font></pre><h2><pre><font color=\"#3C3C3C\"><pre>music_as <font color=\"DeepPink\">:code</font><br>code_as <font color=\"DeepPink\">:art</font></pre></h2><pre><font size=\"4\"><br>v2.1</font></pre></center>");
+  infoPane->setHtml("<center><img src=\":/images/logo-smaller.png\" height=\"268\" width=\"328\"><pre><font size=\"4\"><font color=\"DeepPink\">A Sound Synthesiser<br>for Live Coding</font><br><br>Designed and developed by Sam Aaron<br>in Cambridge, England<br><br><font color=\"DeepPink\"><a href=\"http://sonic-pi.net\" style=\"text-decoration: none; color:DeepPink\">http://sonic-pi.net</a></font><br><br>For the latest updates follow<br><font color=\"DeepPink\"><a href=\"http://twitter.com/sonic_pi\" style=\"text-decoration: none; color:DeepPink;\">@sonic_pi</a><br></font></font></pre><h2><pre><font color=\"#3C3C3C\"><pre>music_as <font color=\"DeepPink\">:code</font><br>code_as <font color=\"DeepPink\">:art</font></pre></h2><pre><font size=\"4\"><br>v2.1.1</font></pre></center>");
 
 
 #if defined(Q_OS_MAC)
@@ -408,6 +408,19 @@ MainWindow::MainWindow(QApplication &app, QSplashScreen &splash) {
   communityT->setOpenExternalLinks(true);
   communityT->setHtml(s4);
 
+
+  //License
+  QFile file5(":/info/LICENSE.html");
+  if(!file5.open(QFile::ReadOnly | QFile::Text)) {
+  }
+  QString s5;
+  QTextStream st5(&file5);
+  s5.append(st5.readAll());
+  QTextBrowser *licenseT = new QTextBrowser;
+  addUniversalCopyShortcuts(licenseT);
+  licenseT->setOpenExternalLinks(true);
+  licenseT->setHtml(s5);
+
   currentLine = 0; currentIndex = 0;
 
 
@@ -417,6 +430,7 @@ MainWindow::MainWindow(QApplication &app, QSplashScreen &splash) {
   infoTabs->addTab(coreteamT, "Core Team");
   infoTabs->addTab(contributorsT, "Contributors");
   infoTabs->addTab(communityT, "Community");
+  infoTabs->addTab(licenseT, "License");
   infoTabs->addTab(historyT, "History");
   infoTabs->setTabPosition(QTabWidget::South);
 
