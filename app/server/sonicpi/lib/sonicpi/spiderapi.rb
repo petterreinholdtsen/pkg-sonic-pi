@@ -22,6 +22,7 @@ module SonicPi
     include SonicPi::DocSystem
     include SonicPi::Util
 
+    THREAD_RAND_SEED_MAX = 10e20
     def bools(*args)
       args.map do |a|
         if (a == 0) || (not a)
@@ -65,7 +66,22 @@ module SonicPi
     ]
 
     def range(start, finish, step_size=1)
-      start.step(finish, step_size).to_a.ring
+      return [] if start == finish
+      step_size = step_size.abs
+      res = []
+      cur = start
+      if start < finish
+        while cur < finish
+          res << cur
+          cur += step_size
+        end
+      else
+        while cur > finish
+          res << cur
+          cur -= step_size
+        end
+      end
+      res.ring
     end
     doc name:           :range,
         introduced:     Version.new(2,2,0),
@@ -75,11 +91,11 @@ module SonicPi
         accepts_block:  false,
         doc:            "Create a new ring buffer from the range arguments (start, finish and step size). Step size defaults to 1. Indexes wrap around positively and negatively",
         examples:       [
-      "(range 1, 5)    #=> (ring 1, 2, 3, 4, 5)",
-      "(range 1, 5, 1) #=> (ring 1, 2, 3, 4, 5)",
-      "(range 1, 5, 2) #=> (ring 1, 3, 5)",
-      "(range 1, -5, -2) #=> (ring 1, -1, -3, -5)",
-      "(range 1, -5, -2)[-1] #=> -5"
+      "(range 1, 5)    #=> (ring 1, 2, 3, 4)",
+      "(range 1, 5, 1) #=> (ring 1, 2, 3, 4)",
+      "(range 1, 5, 2) #=> (ring 1, 3)",
+      "(range 1, -5, 2) #=> (ring 1, -1, -3)",
+      "(range 1, -5, 2)[-1] #=> -3"
     ]
 
     def ring(*args)
@@ -148,8 +164,11 @@ end"]
       "dec -1 # returns -2"]
 
 
-    def live_loop(name, *args, &block)
-      raise "live_loop must be called with a code block" unless block
+    def live_loop(name=nil, *args, &block)
+      raise "live_loop needs to have a unique name. For example: live_loop :foo" unless name
+      raise "live_loop's name needs to be a string or symbol, got: #{name.inspect}. Example usage: live_loop :foo" unless (name.is_a?(Symbol) || name.is_a?(String))
+      ll_name = "live_loop_#{name}".to_sym
+      raise "live_loop #{name.inspect} must be called with a do/end code block" unless block
 
       args_h = resolve_synth_opts_hash_or_array(args)
       if args_h.has_key? :auto_cue
@@ -160,18 +179,18 @@ end"]
 
       case block.arity
       when 0
-        define(name) do |a|
+        define(ll_name) do |a|
           block.call
         end
       when 1
-        define(name) do |a|
+        define(ll_name) do |a|
           block.call(a)
         end
       else
         raise "Live loop block must only accept 0 or 1 args"
       end
 
-      in_thread(name: name) do
+      in_thread(name: ll_name) do
         Thread.current.thread_variable_set :sonic_pi__not_inherited__live_loop_auto_cue, auto_cue
         if args_h.has_key?(:init)
           res = args_h[:init]
@@ -182,14 +201,14 @@ end"]
           t1 = Thread.current.thread_variable_get(:sonic_pi_spider_time)
           Thread.current.thread_variable_set(:sonic_pi_spider_synced, false)
           cue name if Thread.current.thread_variable_get :sonic_pi__not_inherited__live_loop_auto_cue
-          res = send(name, res)
+          res = send(ll_name, res)
 
           t2 = Thread.current.thread_variable_get(:sonic_pi_spider_time)
           raise "Live loop #{name.to_sym.inspect} did not sleep!" if (t1 == t2) && !Thread.current.thread_variable_get(:sonic_pi_spider_synced)
         end
       end
 
-      st = sthread(name)
+      st = sthread(ll_name)
       st.thread_variable_set :sonic_pi__not_inherited__live_loop_auto_cue, auto_cue if st
       st
     end
@@ -217,14 +236,17 @@ end
 "   ]
 
 
-    def at(times, params=nil, &block)
+    def at(times=0, params=nil, &block)
       raise "after must be called with a code block" unless block
-      params ||= []
+      had_params = params
+      times = [times] if times.is_a? Numeric
+      # When no params are specified, pass the times through as params
+      params ||= times
+
       raise "params needs to be a list-like thing" unless params.respond_to? :[]
+      raise "times needs to be a list-like thing" unless times.respond_to? :each_with_index
 
       params_size = params.size
-      times = [times] if times.is_a? Numeric
-      raise "times needs to be a list-like thing" unless times.respond_to? :each_with_index
       times.each_with_index do |t, idx|
         in_thread do
           sleep t
@@ -232,14 +254,17 @@ end
           when 0
             block.call
           when 1
-            if params_size == 0
-              block.call(nil)
+            block.call(params[idx % params_size])
+          when 2
+            if had_params
+              block.call(t, params[idx % params_size])
             else
-              p = params[idx % params_size]
-              block.call(p)
+              block.call(t, idx)
             end
+          when 3
+            block.call(t, params[idx % params_size], idx)
           else
-            raise "block for after should only accept 0 or 1 parameters. You gave: #{block.arity}."
+            raise "block for at should only accept 0, 1, 2 or 3 parameters. You gave: #{block.arity}."
           end
         end
       end
@@ -247,7 +272,7 @@ end
     doc name:           :at,
         introduced:     Version.new(2,1,0),
         summary:        "Run a block at the given times",
-        doc:            "Given a list of times, run the block once after waiting each given time. If passed an optional params list, will pass each param individually to each block call. If params is smaller than args, the values will rotate through.",
+        doc:            "Given a list of times, run the block once after waiting each given time. If passed an optional params list, will pass each param individually to each block call. If params is smaller than args, the values will rotate through. If no params are passed, the times are fed as the default params. If the block is given 2 args, both the times and the params are fed through. Finally, a third parameter to the block will receive the index of the time.",
         args:           [[:times, :list],
                          [:params, :list]],
         opts:           {:params=>nil},
@@ -267,7 +292,28 @@ at [1, 2, 3],
     [{:amp=>0.5}, {:amp=> 0.8}] do |p| # alternate soft and loud
   sample :drum_cymbal_open, p          # cymbal hits three times
 end
-"]
+",
+"
+at [0, 1, 2] do |t| # when no params are given to at, the times are fed through to the block
+  puts t #=> prints 0, 1, then 2
+end
+",
+"
+at [0, 1, 2], [:a, :b] do |t, b|  #If you specify the block with 2 args, it will pass through both the time and the param
+  puts [t, b] #=> prints out [0, :a], [1, :b], then [2, :a]
+end
+",
+"
+at [0, 0.5, 2] do |t, idx|  #If you the block with 2 args, and no param list to at, it will pass through both the time and the index
+  puts [t, idx] #=> prints out [0, 0], [0.5, 1], then [2, 2]
+end
+",
+"
+at [0, 0.5, 2], [:a, :b] do |t, b, idx|  #If specify the block with 3 args, it will pass through the time, the param and the index
+  puts [t, b, idx] #=> prints out [0, :a, 0], [0.5, :b, 1], then [2, :a, 2]
+end
+"
+    ]
 
     def version
       @version
@@ -606,6 +652,29 @@ one_in 3 # will return true with a probability of 1/3, false with a probability 
 one_in 100 # will return true with a probability of 1/100, false with a probability of 99/100"]
 
 
+    def rdist(width, centre=0, *opts)
+      rrand(centre - width, centre + width, *opts)
+    end
+    doc name:           :rdist,
+        introduced:     Version.new(2,3,0),
+        summary:        "Random number in centred distribution",
+        args:           [[:width, :number], [:centre, :number]],
+        opts:           {:res => nil},
+        accepts_block:  false,
+        doc:            "Returns a random number within the range with width around centre. If optional arg :res is used, the result is quantised by res.",
+        examples:      [
+"
+print rdist(1, 0) #=> will print a number between -1 and 1
+",
+"
+print rdist(1) #=> centre defaults to 0 so this is the same as rdist(1, 0)
+",
+"
+loop do
+  play :c3, pan: rdist(1) #=> Will play :c3 with random L/R panning
+  sleep 0.125
+end"]
+
 
 
     def rrand(min, max, *opts)
@@ -736,6 +805,8 @@ shuffle \"foobar\"  #=> Would return something like: \"roobfa\""    ]
     def use_random_seed(seed, &block)
       raise "use_random_seed does not work with a block. Perhaps you meant with_random_seed" if block
       Thread.current.thread_variable_set :sonic_pi_spider_random_generator, Random.new(seed)
+      thread_seed = Random.new(seed).rand(THREAD_RAND_SEED_MAX)
+      Thread.current.thread_variable_set :sonic_pi_spider_new_thread_random_generator, Random.new(thread_seed)
     end
     doc name:          :use_random_seed,
         introduced:    Version.new(2,0,0),
@@ -757,9 +828,13 @@ puts rand  #=> 0.417022004702574
     def with_random_seed(seed, &block)
       raise "with_random_seed requires a block. Perhaps you meant use_random_seed" unless block
       current_rgen = Thread.current.thread_variable_get :sonic_pi_spider_random_generator
+      current_thread_rgen = Thread.current.thread_variable_get :sonic_pi_spider_new_thread_random_generator
       Thread.current.thread_variable_set :sonic_pi_spider_random_generator, Random.new(seed)
+      thread_seed = Random.new(seed).rand(THREAD_RAND_SEED_MAX)
+      Thread.current.thread_variable_set :sonic_pi_spider_new_thread_random_generator, Random.new(thread_seed)
       block.call
       Thread.current.thread_variable_set :sonic_pi_spider_random_generator, current_rgen
+      Thread.current.thread_variable_set :sonic_pi_spider_new_thread_random_generator, current_thread_rgen
     end
     doc name:          :with_random_seed,
         introduced:     Version.new(2,0,0),
@@ -783,6 +858,10 @@ puts rand # => 0.7203244934421581
 
 
 
+    # Give a deprecation warning to users coming from v1.0
+    def with_tempo(*args, &block)
+      raise "The function with_tempo is deprecated since v2.0. Please consider use_bpm or with_bpm."
+    end
 
     def use_bpm(bpm, &block)
       raise "use_bpm does not work with a block. Perhaps you meant with_bpm" if block
@@ -869,6 +948,102 @@ end"]
 
 
 
+    def with_bpm_mul(mul, &block)
+      raise "with_bpm_mul must be called with a block. Perhaps you meant use_bpm_mul" unless block
+      current_mul = Thread.current.thread_variable_get(:sonic_pi_spider_sleep_mul)
+      new_mul = current_mul.to_f / mul
+      Thread.current.thread_variable_set(:sonic_pi_spider_sleep_mul, new_mul)
+      block.call
+      Thread.current.thread_variable_set(:sonic_pi_spider_sleep_mul, current_mul)
+    end
+    doc name:           :with_bpm_mul,
+        introduced:     Version.new(2,3,0),
+        summary:        "Set new tempo as a multiple of current tempo for block",
+        doc:            "Sets the tempo in bpm (beats per minute) for everything in the given block as a multiplication of the current tempo. Affects all containing calls to sleep and all temporal synth arguments which will be scaled to match the new bpm. See also with_bpm",
+        args:           [[:mul, :number]],
+        opts:           nil,
+        accepts_block:  true,
+        examples:       [
+"
+use_bpm 60   # Set the BPM to 60
+play 50
+sleep 1      # Sleeps for 1 second
+play 62
+sleep 2      # Sleeps for 2 seconds
+with_bpm_mul 0.5 do # BPM is now (60 * 0.5) == 30
+  play 50
+  sleep 1           # Sleeps for 2 seconds
+  play 62
+end
+sleep 1            # BPM is now back to 60, therefore sleep is 1 second
+"]
+
+
+    def use_bpm_mul(mul, &block)
+      raise "use_bpm_mul must not be called with a block. Perhaps you meant with_bpm_mul" if block
+      current_mul = Thread.current.thread_variable_get(:sonic_pi_spider_sleep_mul)
+      new_mul = current_mul.to_f / mul
+      Thread.current.thread_variable_set(:sonic_pi_spider_sleep_mul, new_mul)
+    end
+    doc name:           :use_bpm_mul,
+        introduced:     Version.new(2,3,0),
+        summary:        "Set new tempo as a multiple of current tempo",
+        doc:            "Sets the tempo in bpm (beats per minute) as a multiplication of the current tempo. Affects all containing calls to sleep and all temporal synth arguments which will be scaled to match the new bpm. See also use_bpm",
+        args:           [[:mul, :number]],
+        opts:           nil,
+        accepts_block:  false,
+        examples:       [
+"
+use_bpm 60   # Set the BPM to 60
+play 50
+sleep 1      # Sleeps for 1 seconds
+play 62
+sleep 2      # Sleeps for 2 seconds
+use_bpm_mul 0.5 do # BPM is now (60 * 0.5) == 30
+play 50
+sleep 1           # Sleeps for 2 seconds
+play 62
+
+"]
+
+    def density(d, &block)
+      d = d.abs
+      reps = d < 1 ? 1.0 : d
+      with_bpm_mul d do
+        if block.arity == 0
+          d.times do
+            block.call
+          end
+        else
+          d.times do |idx|
+            block.call idx
+          end
+        end
+      end
+    end
+    doc name:           :density,
+        introduced:     Version.new(2,3,0),
+        summary:        "Squash and repeat time",
+        doc:            "Runs the block d times with the bpm for the block also multiplied by d. Great for repeating sections a number of times faster yet keeping within a fixed time.",
+        args:           [[:d, :density]],
+        opts:           nil,
+        accepts_block:  true,
+        examples:       [
+"
+use_bpm 60   # Set the BPM to 60
+
+density 2 do       # BPM for block is now 120
+                   # block is called 2.times
+  sample :bd_hause # sample is played twice
+  sleep 0.5        # sleep is 0.25s
+end",
+
+"
+density 2 do |idx| # You may also pass a param to the block similar to n.times
+  puts idx         # prints out 0, 1
+  sleep 0.5        # sleep is 0.25s
+end
+"    ]
 
     def current_bpm
       60.0 / Thread.current.thread_variable_get(:sonic_pi_spider_sleep_mul)
@@ -1221,13 +1396,8 @@ end"]
       job_id = __current_job_id
       reg_with_parent_completed = Promise.new
 
-      # Don't use the current generator to gen the new seed as this gen
-      # might possibly want be passed through to the block untouched
-      # (which is indeed the case with the current with_fx
-      # implementation)
-      rgen = Thread.current.thread_variable_get :sonic_pi_spider_random_generator
-      cur_seed = rgen.seed
-      new_rand_seed = args_h[:seed] || Random.new(cur_seed).rand(999999999999999999999999999999999999999)
+      rgen = Thread.current.thread_variable_get :sonic_pi_spider_new_thread_random_generator
+      new_rand_seed = args_h[:seed] || rgen.rand(999999999999999999999999999999999999999)
 
       # Create the new thread
       t = Thread.new do

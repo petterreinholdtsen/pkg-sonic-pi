@@ -6,6 +6,7 @@ following platforms:
 
 * [Raspberry Pi](#raspberry-pi)
 * [Generic Linux](#generic-linux)
+* [Arch Linux](#arch-linux)
 * [Mac OS X](#mac-os-x)
 * [Windows](#windows)
 
@@ -13,8 +14,7 @@ following platforms:
 ## Raspberry Pi
 
 The Raspberry Pi will happily compile all the required aspects of Sonic
-Pi. However, be warned that it will take some time (around 15 mins or so
-for everything). 
+Pi. However, be warned that it will take quite some time to complete.
 
 First grab the dependencies, compile the server extensions, then the GUI then start the app.
 
@@ -55,12 +55,19 @@ Debian package dependency names:
 
 * `supercollider`
 * `ruby1.9.3` (Ruby 2+ is preferred)
-* `libqscintilla2-8` (on Ubuntu 14.04 the name is `libqscintilla2-l10n`)
+* `libqscintilla2-8`
 * `libqscintilla2-dev`
 * `qt4-dev-tools`
 * `ruby-dev`
 * `cmake` (for some configurations, e.g., 32bit x86)
 * `libffi-dev`
+
+In addition, under Ubuntu 14.04 based distributions try these:
+
+* `libqscintilla2-l10n`
+* `qt4-qmake`
+* `libqt4-dev`
+* `libqscintilla2-dev`
 
 Fedora package dependency names:
 
@@ -82,6 +89,25 @@ Compile the server extensions by `cd`ing into the directory `app/server/bin` and
 Start the jack sound server daemon `jackd`. This is easily done through [qjackctl](http://qjackctl.sourceforge.net/), available as `qjackctl` in Debian.
 
 Then run the script `rp-app-bin` in the directory `app/gui/qt`.
+
+----
+
+## Arch Linux
+
+### AUR Package
+
+Arch Linux users are strongly recommended to install the [sonic-pi-git](https://aur.archlinux.org/packages/sonic-pi-git/) package from the AUR; see the wiki article on the [Arch User Repository](https://wiki.archlinux.org/index.php/Arch_User_Repository) if you are unfamiliar with how to install such a package. The PKGBUILD found in this package will:
+* Clone the latest sonic-pi source from GitHub
+* Apply a patch to fix a library naming issue
+* Build sonic-pi from source, according to the instructions found in [Generic Linux](#generic-linux)
+* Install the built software components to `/opt/sonic-pi-git`
+* Install the launcher to `/usr/bin/sonic-pi`
+
+After installing, users need to follow the instructions in the [Generic Linux](#generic-linux) section to start the `jackd` server, and then run `sonic-pi` at a command prompt. 
+
+###Building from source
+
+Users can opt to build from source as well if they would like. Instructions and dependencies can be found within the PKGBUILD file in the AUR package previously mentioned, as well as the required patch file. 
 
 ----
 

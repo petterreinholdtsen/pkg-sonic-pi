@@ -1038,11 +1038,9 @@ play 60 # plays note 60 with an amp of 0.5, pan of -1 and defaults for rest of a
          tracker = nil
          fx_group = nil
          job_id = Thread.current.thread_variable_get :sonic_pi_spider_job_id
+         block_res = nil
 
          __no_kill_block do
-           ## Munge args
-           args_h = resolve_synth_opts_hash_or_array(args)
-           kill_delay = args_h[:kill_delay] || info.kill_delay(args_h)
 
            ## We're in a no_kill block, so the user can't randomly kill
            ## the current thread. That means it's safe to set up the
@@ -1052,9 +1050,6 @@ play 60 # plays note 60 with an amp of 0.5, pan of -1 and defaults for rest of a
            ## thread to wait for the current thread to either exit
            ## correctly or to die and to handle things appropriately.
 
-           current_trackers = Thread.current.thread_variable_get(:sonic_pi_mod_sound_trackers) || Set.new
-
-           fx_group = @mod_sound_studio.new_group(:head, current_fx_main_group, "Run-#{job_id}-#{fx_name}")
 
            ## Create a new bus for this fx chain
            begin
@@ -1067,6 +1062,18 @@ play 60 # plays note 60 with an amp of 0.5, pan of -1 and defaults for rest of a
                return block.call(@blank_node)
              end
            end
+
+           ## Munge args
+           args_h = resolve_synth_opts_hash_or_array(args)
+           args_h["in_bus"] = new_bus
+           args_h = normalise_and_resolve_synth_args(args_h, info)
+
+           # Setup trackers
+           current_trackers = Thread.current.thread_variable_get(:sonic_pi_mod_sound_trackers) || Set.new
+
+           # Create new group for this FX - this is to enable the FX to be triggered at logical time
+           # whilst ensuring it is in the correct position in the scsynth node tree.
+           fx_group = @mod_sound_studio.new_group(:head, current_fx_main_group, "Run-#{job_id}-#{fx_name}")
 
            ## Create a 'GC' thread to safely handle completion of the FX
            ## block (or the case that the thread dies) and to clean up
@@ -1119,6 +1126,7 @@ play 60 # plays note 60 with an amp of 0.5, pan of -1 and defaults for rest of a
              Thread.new do
                Thread.current.thread_variable_set(:sonic_pi_thread_group, :gc_kill_fx_synth)
                Thread.current.priority = -10
+               kill_delay = args_h[:kill_delay] || info.kill_delay(args_h)
                new_subthreads.each do |st|
                  join_thread_and_subthreads(st)
                end
@@ -1137,7 +1145,7 @@ play 60 # plays note 60 with an amp of 0.5, pan of -1 and defaults for rest of a
 
            ## Trigger new fx synth (placing it in the fx group) and
            ## piping the in and out busses correctly
-           fx_synth = trigger_fx(fx_synth_name, args_h.merge({"in_bus" => new_bus}), fx_group)
+           fx_synth = trigger_fx(fx_synth_name, args_h, info, new_bus, fx_group)
 
            ## Create a synth tracker and stick it in a thread local
            tracker = SynthTracker.new
@@ -1173,9 +1181,9 @@ play 60 # plays note 60 with an amp of 0.5, pan of -1 and defaults for rest of a
            Thread.current.thread_variable_set(:sonic_pi_mod_sound_fx_group, fx_group)
            begin
              if block.arity == 0
-               block.call
+               block_res = block.call
              else
-               block.call(fx_synth)
+               block_res = block.call(fx_synth)
              end
            rescue
              ## Oopsey - there was an error in the user's block. Re-raise
@@ -1212,6 +1220,9 @@ play 60 # plays note 60 with an amp of 0.5, pan of -1 and defaults for rest of a
          # remaining synths to complete and can be left to work in the
          # background...
          gc_completed.get
+
+         # return result of block
+         block_res
        end
        doc name:          :with_fx,
            introduced:    Version.new(2,0,0),
@@ -1564,6 +1575,8 @@ set_volume! 2 # Set the main system volume to 2",
 load_sample :elec_blip # :elec_blip is now loaded and ready to play as a sample
 puts sample_loaded? :elec_blip # prints true because it has been pre-loaded
 puts sample_loaded? :misc_burp # prints false because it has not been loaded"]
+
+
 
        def load_sample(path)
          case path
@@ -2147,6 +2160,8 @@ sleep 1
 
        def control(node, *args)
          ensure_good_timing!
+         return nil if node.nil?
+
          args_h = resolve_synth_opts_hash_or_array(args)
          n = args_h[:note]
          args_h[:note] = note(n) if n
@@ -2176,6 +2191,8 @@ control my_node, cutoff: 90 # Now modify cutoff from 79 to 90, sound is still pl
 
        def stop(node)
          ensure_good_timing!
+         return nil if node.nil?
+
          alive = node.live?
          node.kill
          if alive
@@ -2250,7 +2267,7 @@ stop bar"]
 
 
 
-       def load_synthdefs(path)
+       def load_synthdefs(path=synthdef_path)
          path = File.expand_path(path)
          raise "No directory exists called #{path.inspect} " unless File.exists? path
          @mod_sound_studio.load_synthdefs(path)
@@ -2282,10 +2299,17 @@ stop bar"]
              # Allow vals to be keys to other vals
              # But only one level deep...
              args_h[k] = args_h[v].to_f
+           when TrueClass
+             args_h[k] = 1.0
+           when FalseClass
+             args_h[k] = 0.0
+           when NilClass
+             args_h[k] = 0.0
            else
              args_h[k] = v.to_f
            end
          end
+         args_h
        end
 
        def scale_time_args_to_bpm!(args_h, info)
@@ -2346,7 +2370,7 @@ stop bar"]
          res
        end
 
-       def complex_args?(args_h)
+       def complex_sampler_args?(args_h)
          # break out early if any of the 'complex' keys exist in the
          # args map:
          return false if args_h.empty?
@@ -2365,7 +2389,7 @@ stop bar"]
 
 
        def trigger_sampler(path, buf_id, num_chans, args_h, group=current_job_synth_group)
-         if complex_args?(args_h)
+         if complex_sampler_args?(args_h)
            #complex
            synth_name = (num_chans == 1) ? :mono_player : :stereo_player
          else
@@ -2400,65 +2424,58 @@ stop bar"]
            __delayed_message "synth #{sn.inspect}, #{arg_h_pp(args_h)}"
          end
 
-         trigger_synth(synth_name, args_h, group, info)
+         trigger_synth(synth_name, args_h, group, info, false, nil, true)
        end
 
        def trigger_chord(synth_name, notes, args_a_or_h, group=current_job_synth_group)
+         sn = synth_name.to_sym
+         info = SynthInfo.get_info(sn)
          args_h = resolve_synth_opts_hash_or_array(args_a_or_h)
+         args_h = normalise_and_resolve_synth_args(args_h, info, nil, true)
 
          chord_group = @mod_sound_studio.new_group(:tail, group, "CHORD")
          cg = ChordGroup.new(chord_group)
+
+         unless Thread.current.thread_variable_get(:sonic_pi_mod_sound_synth_silent)
+           __delayed_message "synth #{sn.inspect}, #{arg_h_pp(args_h.merge({note: notes}))}"
+         end
+
+         # Scale down amplitude based on number of notes in chord
+         amp = args_h[:amp] || 1.0
+         args_h[:amp] = amp.to_f / notes.size
 
          nodes = []
          notes.each do |note|
            if note
              args_h[:note] = note
-             nodes << trigger_inst(synth_name, args_h, cg)
+             nodes << trigger_synth_with_resolved_args(synth_name, args_h, cg, info)
            end
          end
          cg.sub_nodes = nodes
          cg
        end
 
-       def trigger_fx(synth_name, args_a_or_h, group=current_fx_group)
-         args_h = resolve_synth_opts_hash_or_array(args_a_or_h)
-         sn = synth_name.to_sym
-         info = SynthInfo.get_info(sn)
-
-         n = trigger_synth(synth_name, args_h, group, info)
-
-         info = SynthInfo.get_info(sn)
-         FXNode.new(n, args_h["in_bus"], current_out_bus)
+       def trigger_fx(synth_name, args_h, info, in_bus, group=current_fx_group)
+         n = trigger_synth_with_resolved_args(synth_name, args_h, group, info)
+         FXNode.new(n, in_bus, current_out_bus)
        end
 
-       def trigger_synth(synth_name, args_h, group, info, now=false, out_bus=nil)
+       def trigger_synth(synth_name, args_h, group, info, now=false, out_bus=nil, combine_tls=false)
+         processed_args = normalise_and_resolve_synth_args(args_h, info, out_bus, combine_tls)
+         trigger_synth_with_resolved_args(synth_name, processed_args, group, info, now, out_bus)
+       end
 
-         defaults = info ? info.arg_defaults : {}
+       # Function that actually triggers synths now that all args are resolved
+       def trigger_synth_with_resolved_args(synth_name, args_h, group, info, now=false, out_bus=nil)
          synth_name = info ? info.scsynth_name : synth_name
-
-         unless out_bus
-           out_bus = current_out_bus
-         end
-
-         t_l_args = Thread.current.thread_variable_get(:sonic_pi_mod_sound_synth_defaults) || {}
-
-         combined_args = defaults.merge(t_l_args.merge(args_h))
-
-         combined_args["out_bus"] = out_bus
-
-         normalise_args!(combined_args)
-
-         scale_time_args_to_bpm!(combined_args, info) if info && Thread.current.thread_variable_get(:sonic_pi_spider_arg_bpm_scaling)
-
-         validate_if_necessary! info, combined_args
-
+         validate_if_necessary! info, args_h
          job_id = current_job_id
          __no_kill_block do
 
            p = Promise.new
            job_synth_proms_add(job_id, p)
 
-           s = @mod_sound_studio.trigger_synth synth_name, group, combined_args, info, now
+           s = @mod_sound_studio.trigger_synth synth_name, group, args_h, info, now
 
            trackers = Thread.current.thread_variable_get(:sonic_pi_mod_sound_trackers)
 
@@ -2476,7 +2493,25 @@ stop bar"]
 
            s
          end
+       end
 
+       def normalise_and_resolve_synth_args(args_h, info, out_bus=nil, combine_tls=false)
+         defaults = info ? info.arg_defaults : {}
+         unless out_bus
+           out_bus = current_out_bus
+         end
+
+         if combine_tls
+           t_l_args = Thread.current.thread_variable_get(:sonic_pi_mod_sound_synth_defaults) || {}
+           combined_args = defaults.merge(t_l_args.merge(args_h))
+         else
+           combined_args = defaults.merge(args_h)
+         end
+
+         combined_args["out_bus"] = out_bus
+         normalise_args!(combined_args)
+         scale_time_args_to_bpm!(combined_args, info) if info && Thread.current.thread_variable_get(:sonic_pi_spider_arg_bpm_scaling)
+         combined_args
        end
 
        def current_job_id

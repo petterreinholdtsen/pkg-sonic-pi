@@ -153,10 +153,7 @@ module SonicPi
       when :osx
         osx_scsynth_path
       when :windows
-        potential_paths = [
-          "#{native_path}/scsynth.exe",
-          "C:/Program Files (x86)/SuperCollider-3.6.6/scsynth.exe",
-          "C:/Program Files/SuperCollider-3.6.6/scsynth.exe"]
+        potential_paths = ["#{native_path}/scsynth.exe"]
         path = potential_paths.find {|path| File.exists? path }
         raise "Unable to find SuperCollider. Is it installed? I looked here: #{potential_paths.inspect}" unless path
         path
@@ -209,32 +206,8 @@ module SonicPi
     def boot_server_osx
       log_boot_msg
       log "Booting on OS X"
-      begin
-        # NB OSX 10.6 system_profiler doesn't contain the necessary info for this command - will return 0
-        osx_audio_settings = `system_profiler SPAudioDataType`.split("\n\n")
-        osx_default_input = osx_audio_settings.select {|x| x[/Default Input Device: Yes/] }.first.to_s
-        osx_default_output = osx_audio_settings.select {|x| x[/Default Output Device: Yes/] }.first.to_s
-        osx_input_sample_rate = osx_default_input.match(/Current SampleRate: (\d+)/).captures.first
-        osx_output_sample_rate = osx_default_output.match(/Current SampleRate: (\d+)/).captures.first
-
-        if osx_output_sample_rate != 44100
-          log "NOTICE: Non-standard sample rate detected. Booting SuperCollider with sample rate of #{osx_output_sample_rate} Hz"
-        end
-
-        if osx_input_sample_rate != osx_output_sample_rate
-          # Let SuperCollider fix the sample rate using this one weird tip...
-          # Send a command to start the server and let it fail with the 'input and output sample rates do not match' error
-          # On the next boot it will have reset the sample rates and will start properly
-          log "WARNING: input and output sample rates do not match. Trying to start SuperCollider again. See the following message:"
-          sc_boot_msg = `'#{scsynth_path}' -a #{num_audio_busses_for_current_os}-u #{@port} -m 131072 -S #{osx_output_sample_rate} &`
-          log sc_boot_msg
-        end
-      rescue
-        log "WARNING: Sample rate could not be detected automatically. Please use the 'Audio MIDI Setup' to set the sample rate to 44100.0 Hz, otherwise SonicPi might not be able to start"
-      end
-
       boot_and_wait do
-        raise unless sys("'#{scsynth_path}' -a #{num_audio_busses_for_current_os} -u #{@port} -m 131072 &")
+        sys("'#{scsynth_path}' -a #{num_audio_busses_for_current_os} -u #{@port} -m 131072&")
       end
     end
 
@@ -263,7 +236,7 @@ module SonicPi
       @jack_pid = `ps cax | grep jackd`.split(" ").first
 
       boot_and_wait do
-        sys("scsynth -u #{@port} -m 131072 -a #{num_audio_busses_for_current_os} -z 256 &")
+        sys("scsynth -u #{@port} -m 131072 -a #{num_audio_busses_for_current_os} -z 256 -U /usr/lib/SuperCollider/plugins:#{native_path}/extra-ugens/ &")
       end
 
       `jack_connect SuperCollider:out_1 system:playback_1`

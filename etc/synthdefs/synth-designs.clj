@@ -3052,6 +3052,42 @@
     freq_slide 0
     freq_slide_shape 5
     freq_slide_curve 0
+    mod_amp 1
+    mod_amp_slide 0
+    mod_amp_slide_shape 5
+    mod_amp_slide_curve 0
+    in_bus 0
+    out_bus 0]
+   (let [amp           (varlag amp amp_slide amp_slide_curve amp_slide_shape)
+         mix           (varlag mix mix_slide mix_slide_curve mix_slide_shape)
+         pre_amp       (varlag pre_amp pre_amp_slide pre_amp_slide_curve pre_amp_slide_shape)
+         freq          (varlag freq freq_slide freq_slide_curve freq_slide_shape)
+         freq          (midicps freq)
+
+         [in-l in-r]   (* pre_amp (in in_bus 2))
+         [new-l new-r] (* [in-l in-r] (* (sin-osc freq) mod_amp))
+         fin-l         (x-fade2 in-l new-l (- (* mix 2) 1) amp)
+         fin-r         (x-fade2 in-r new-r (- (* mix 2) 1) amp)]
+     (out out_bus [fin-l fin-r])))
+
+
+ (defsynth sonic-pi-fx_bpf
+   [amp 1
+    amp_slide 0
+    amp_slide_shape 5
+    amp_slide_curve 0
+    mix 1
+    mix_slide 0
+    mix_slide_shape 5
+    mix_slide_curve 0
+    pre_amp 1
+    pre_amp_slide 0
+    pre_amp_slide_shape 5
+    pre_amp_slide_curve 0
+    centre 100
+    centre_slide 0
+    centre_slide_shape 5
+    centre_slide_curve 0
     res 0.6
     res_slide 0
     res_slide_shape 5
@@ -3061,8 +3097,8 @@
    (let [amp           (varlag amp amp_slide amp_slide_curve amp_slide_shape)
          mix           (varlag mix mix_slide mix_slide_curve mix_slide_shape)
          pre_amp       (varlag pre_amp pre_amp_slide pre_amp_slide_curve pre_amp_slide_shape)
-         freq          (varlag freq freq_slide freq_slide_curve freq_slide_shape)
-         freq          (midicps freq)
+         centre        (varlag centre centre_slide centre_slide_curve centre_slide_shape)
+         freq          (midicps centre)
          res           (varlag res res_slide res_slide_curve res_slide_shape)
 
          [in-l in-r]   (* pre_amp (in in_bus 2))
@@ -3084,10 +3120,10 @@
     pre_amp_slide 0
     pre_amp_slide_shape 5
     pre_amp_slide_curve 0
-    freq 100
-    freq_slide 0
-    freq_slide_shape 5
-    freq_slide_curve 0
+    centre 100
+    centre_slide 0
+    centre_slide_shape 5
+    centre_slide_curve 0
     res 0.6
     res_slide 0
     res_slide_shape 5
@@ -3097,8 +3133,8 @@
    (let [amp           (varlag amp amp_slide amp_slide_curve amp_slide_shape)
          mix           (varlag mix mix_slide mix_slide_curve mix_slide_shape)
          pre_amp       (varlag pre_amp pre_amp_slide pre_amp_slide_curve pre_amp_slide_shape)
-         freq          (varlag freq freq_slide freq_slide_curve freq_slide_shape)
-         freq          (midicps freq)
+         centre        (varlag centre centre_slide centre_slide_curve centre_slide_shape)
+         freq          (midicps centre)
          res           (varlag res res_slide res_slide_curve res_slide_shape)
 
          [in-l in-r]   (* pre_amp (in in_bus 2))
@@ -3120,10 +3156,10 @@
     pre_amp_slide 0
     pre_amp_slide_shape 5
     pre_amp_slide_curve 0
-    freq 100
-    freq_slide 0
-    freq_slide_shape 5
-    freq_slide_curve 0
+    centre 100
+    centre_slide 0
+    centre_slide_shape 5
+    centre_slide_curve 0
     res 0.6
     res_slide 0
     res_slide_shape 5
@@ -3133,8 +3169,8 @@
    (let [amp           (varlag amp amp_slide amp_slide_curve amp_slide_shape)
          mix           (varlag mix mix_slide mix_slide_curve mix_slide_shape)
          pre_amp       (varlag pre_amp pre_amp_slide pre_amp_slide_curve pre_amp_slide_shape)
-         freq          (varlag freq freq_slide freq_slide_curve freq_slide_shape)
-         freq          (midicps freq)
+         centre        (varlag centre centre_slide centre_slide_curve centre_slide_shape)
+         freq          (midicps centre)
          res           (varlag res res_slide res_slide_curve res_slide_shape)
 
          [in-l in-r]   (* pre_amp (in in_bus 2))
@@ -3226,6 +3262,117 @@
          fin-r         (x-fade2 in-r new-r (- (* mix 2) 1) amp)]
      (out out_bus [fin-l fin-r])))
 
+  (defsynth sonic-pi-fx_flanger
+   [amp 1
+    amp_slide 0
+    amp_slide_shape 5
+    amp_slide_curve 0
+
+    mix 1
+    mix_slide 0
+    mix_slide_shape 5
+    mix_slide_curve 0
+
+    pre_amp 1
+    pre_amp_slide 0
+    pre_amp_slide_shape 5
+    pre_amp_slide_curve 0
+
+    phase 4
+    phase_slide 0
+    phase_slide_shape 5
+    phase_slide_curve 0
+    phase_offset 0
+    wave 4
+    invert_wave 0
+    stereo_invert_wave 0
+
+    pulse_width 0.5
+    pulse_width_slide 0
+    pulse_width_slide_shape 5
+    pulse_width_slide_curve 0
+
+    delay 5
+    delay_slide 0
+    delay_slide_shape 5
+    delay_slide_curve 0
+
+    max_delay 20
+
+    depth 5
+    depth_slide 0
+    depth_slide_shape 5
+    depth_slide_curve 0
+
+    feedback 0
+    feedback_slide 0
+    feedback_slide_shape 5
+    feedback_slide_curve 0
+
+    decay 2
+    decay_slide 0
+    decay_slide_shape 5
+    decay_slide_curve 0
+
+    invert_flange 0
+
+    in_bus 0
+    out_bus 0]
+   (let [amp                 (varlag amp amp_slide amp_slide_curve amp_slide_shape)
+         mix                 (varlag mix mix_slide mix_slide_curve mix_slide_shape)
+         pre_amp             (varlag pre_amp pre_amp_slide pre_amp_slide_curve pre_amp_slide_shape)
+         phase               (varlag phase phase_slide phase_slide_curve phase_slide_shape)
+         pulse_width         (varlag pulse_width pulse_width_slide pulse_width_slide_curve pulse_width_slide_shape)
+         delay               (varlag delay delay_slide delay_slide_curve delay_slide_shape)
+         depth               (varlag depth depth_slide depth_slide_curve depth_slide_shape)
+         feedback            (varlag feedback feedback_slide feedback_slide_curve feedback_slide_shape)
+         decay               (varlag decay decay_slide decay_slide_curve decay_slide_shape)
+         rate                (/ 1 phase)
+         [in-l in-r]         (* pre_amp (in in_bus 2))
+
+         [local-l local-r]   (local-in:ar 2)
+
+         double_phase_offset (* 2 phase_offset)
+         rate                (/ 1 phase)
+         ctl-wave            (select:kr wave [(* -1 (lf-saw:kr rate (+ double_phase_offset 1)))
+                                              (- (* 2 (lf-pulse:kr rate phase_offset pulse_width)) 1)
+                                              (lf-tri:kr rate (+ double_phase_offset 1))
+                                              (sin-osc:kr rate (* (+ phase_offset 0.25) (* Math/PI 2)))
+                                              (lf-cub:kr rate (+ phase_offset 0.5))
+                                              ])
+
+         ctl-wave            (/ (+ ctl-wave 1) 2)
+         inverted-ctl-wave   (- 1 ctl-wave)
+
+         ctl-wave-r          (select:kr invert_wave [ctl-wave
+                                                     inverted-ctl-wave])
+
+         ctl-wave-l          (select:kr stereo_invert_wave [ctl-wave-r
+                                                            (- 1 ctl-wave-r)])
+
+         delay-l             (allpass-c  (+ (limiter (* local-l feedback)) in-l)
+                                         (/ max_delay 1000)
+                                         (max
+                                          (mul-add ctl-wave-l (/ depth 1000) (/ delay 1000))
+                                          0)
+                                         (/ decay 1000))
+
+         delay-r             (allpass-c  (+ (limiter (* local-r feedback)) in-r)
+                                         (/ max_delay 1000)
+                                         (max
+                                          (mul-add ctl-wave-r (/ depth 1000) (/ delay 1000))
+                                          0)
+                                         (/ decay 1000))
+
+         flange-wave-mul     (+ (* -2 (> invert_flange 0)) 1)
+         new-l               (+ in-l (* flange-wave-mul delay-l))
+         new-r               (+ in-r (* flange-wave-mul delay-r))
+         lout                (local-out:ar [new-l new-r])
+         fin-l               (x-fade2 in-l new-l (- (* mix 2) 1) amp)
+         fin-r               (x-fade2 in-r new-r (- (* mix 2) 1) amp)]
+     (out out_bus [fin-l fin-r])))
+
+
  ;;(def ab (audio-bus 2))
  ;;(def g (group :after (foundation-default-group)))
  ;;(sonic-pi-fx_rbpf [:head g] :in_bus ab)
@@ -3277,7 +3424,10 @@
    (save-to-pi sonic-pi-fx_rbpf)
    (save-to-pi sonic-pi-fx_nrbpf)
    (save-to-pi sonic-pi-fx_ring_mod)
-   (save-to-pi sonic-pi-fx_octaver)))
+   (save-to-pi sonic-pi-fx_octaver)
+   (save-to-pi sonic-pi-fx_flanger)
+   ))
+
 
 ;; Experimental
 (comment
