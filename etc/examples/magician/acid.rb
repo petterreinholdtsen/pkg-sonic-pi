@@ -1,38 +1,58 @@
-load_sample :drum_heavy_kick
+use_debug false
+load_sample :bd_fat
 
-in_thread do
-  16.times do
-    sample :drum_heavy_kick, rate: 0.75
-    sleep 0.5
-    sample :drum_heavy_kick
-    sleep 0.5
+8.times do |a|
+  sample :bd_fat, amp: 5 * (inc a).to_f / 8
+  sleep 0.5
+end
+
+loop do
+  in_thread do
+    32.times do
+      sample :bd_fat, amp: 5
+      sleep 0.5
+    end
   end
-end
 
-64.times do
-  use_synth :tb303
-  play chord(:e3, :minor).choose, attack: 0, release: 0.2, cutoff: rrand(50, 90)
-  sleep 0.125
-end
 
-32.times do
-  use_synth :tb303
-  play chord(:a3, :minor).choose, attack: 0, release: 0.2, cutoff: rrand(90, 120)
-  sleep 0.125
-end
+  cue :foo
+  4.times do |i|
+    use_random_seed 667
+    16.times do
+      use_synth :tb303
+      play chord(:e3, :minor).choose, attack: 0, release: 0.1, cutoff: rrand_i(50, 90) + i * 10
+      sleep 0.125
+    end
+  end
 
-with_fx :reverb do
-  32.times do
+  cue :bar
+  32.times do |i|
     use_synth :tb303
-    play chord(:e3, :minor).choose, attack: 0, release: 0.2, cutoff: rrand(110, 130)
+    play chord(:a3, :minor).choose, attack: 0, release: 0.05, cutoff: rrand_i(70, 98) + i, res: rrand(0.05, 0.1)
     sleep 0.125
   end
-end
 
-with_fx :echo, phase: 0.25 do
-  32.times do
-    use_synth :tb303
-    play chord(:e3, :minor).choose, attack: 0, release: 0.2, cutoff: rrand(50, 100)
-    sleep 0.125
+  cue :baz
+  with_fx :reverb, mix: 0.3 do |r|
+    32.times do |m|
+      control r, mix: 0.3 + (0.5 * (m.to_f / 32.0)) unless m == 0 if m % 8 == 0
+      use_synth :prophet
+      play chord(:e3, :minor).choose, attack: 0, release: 0.08, cutoff: rrand_i(110, 130)
+      sleep 0.125
+    end
   end
+
+  cue :quux
+  in_thread do
+    use_random_seed 668
+    with_fx :echo, phase: 0.125 do
+      16.times do
+        use_synth :tb303
+        play chord(:e3, :minor).choose, attack: 0, release: 0.1, cutoff: rrand(50, 100)
+        sleep 0.25
+      end
+    end
+  end
+
+  sleep 8 * 0.25
 end

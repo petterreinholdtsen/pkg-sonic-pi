@@ -21,10 +21,24 @@ Dir["#{File.expand_path("../vendor", __FILE__)}/*/lib/"].each do |vendor_lib|
   $:.unshift vendor_lib
 end
 
+require 'did_you_mean' unless RUBY_VERSION < "2.0.0"
+
 #Monkeypatch osc-ruby to add sending skills to Servers
 #https://github.com/samaaron/osc-ruby/commit/bfc31a709cbe2e196011e5e1420827bd0fc0e1a8
 #and other improvements
 require 'osc-ruby'
+
+class String
+  def shuffle
+    self.chars.to_a.shuffle.join
+  end
+end
+
+class Symbol
+  def shuffle
+    self.to_s.shuffle.to_sym
+  end
+end
 
 class Float
   def times(&block)
@@ -34,9 +48,19 @@ end
 
 module OSC
 
+  class Client
+    def send_raw(mesg)
+      @so.send(mesg, 0)
+    end
+  end
+
   class Server
     def send(msg, address, port)
       @socket.send msg.encode, 0, address, port
+    end
+
+    def send_raw(msg, address, port)
+      @socket.send msg, 0, address, port
     end
 
     def initialize(port, open=false)
@@ -52,8 +76,8 @@ module OSC
 
     def safe_detector
       loop do
-        osc_data, network = @socket.recvfrom( 16384 )
         begin
+          osc_data, network = @socket.recvfrom( 16384 )
           ip_info = Array.new
           ip_info << network[1]
           ip_info.concat(network[2].split('.'))
@@ -62,7 +86,6 @@ module OSC
           end
         rescue Exception => e
           Kernel.puts e.message
-          Kernel.puts e.backtrace.inspect
         end
       end
     end
@@ -182,6 +205,7 @@ require 'rubame'
 ## Teach Rubame::Server#run to block on IO.select
 ## and therefore not thrash round in a loop
 module Rubame
+
   class Server
     def run(time = 0, &blk)
       readable, writable = IO.select(@reading, @writing)
@@ -235,6 +259,26 @@ class Array
   def choose
     rgen = Thread.current.thread_variable_get :sonic_pi_spider_random_generator
     self[rgen.rand(self.size)]
+  end
+
+  alias_method :__orig_sample__, :sample
+  def sample(*args, &blk)
+    rgen = Thread.current.thread_variable_get :sonic_pi_spider_random_generator
+    if rgen
+      self[rgen.rand(self.size)]
+    else
+      __orig_sample__ *args, &blk
+    end
+  end
+
+  alias_method :__orig_shuffle__, :shuffle
+  def shuffle(*args, &blk)
+    rgen = Thread.current.thread_variable_get :sonic_pi_spider_random_generator
+    if rgen
+      __orig_shuffle__(random: rgen)
+    else
+      __orig_shuffle__ *args, &blk
+    end
   end
 end
 

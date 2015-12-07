@@ -12,56 +12,71 @@
 #++
 require_relative "util"
 require_relative "promise"
+require_relative "oscencode"
+require_relative "scsynthoscreceiver"
 
 module SonicPi
   class SCSynthExternal
     include Util
 
-    def initialize(opts={}, &callback)
+    def initialize(events, opts={})
       @hostname = opts[:hostname] || "localhost"
       @port = opts[:sc_port] || 4556
       @scsynth_pid = nil
       @jack_pid = nil
       @out_queue = SizedQueue.new(20)
-
-      @client = OSC::Server.new(0)
-
-      @client.add_method '*' do |m|
-        callback.call(m.address, m.to_a)
-      end
+      @client = ScsynthOSCReceiver.new(0, events)
 
       @osc_in_thread = Thread.new do
         Thread.current.thread_variable_set(:sonic_pi_thread_group, :scsynth_in)
         Thread.current.priority = -10
-        log "starting server thread"
+        log "\n\n\n"
+        log "Starting server thread"
         @client.run
       end
 
       @osc_out_thread = Thread.new do
         Thread.current.thread_variable_set(:sonic_pi_thread_group, :scsynth_out)
+        Thread.current.priority = 200
+        encoder = OscEncode.new(true)
         loop do
           out_job = @out_queue.pop
           if out_job.first == :send
-            @client.send(OSC::Message.new(*out_job[1]), @hostname, @port)
+            address, *args = out_job[1]
+            log "OSC             ~ #{address} #{args.inspect}" if osc_debug_mode
+            m = encoder.encode_single_message(address, args)
+            @client.send_raw(m, @hostname, @port)
           else
-            ts = out_job[1]
-            args = out_job[2]
-            m = OSC::Message.new(*args)
-            b = OSC::Bundle.new(ts, m)
-            @client.send(b, @hostname, @port)
+            vt = out_job[1]
+            ts = out_job[2]
+            address, *args = out_job[3]
+            log "BDL #{'%11.5f' % vt} ~ [#{vt}:#{ts.to_i}] #{address} #{args.inspect}" if osc_debug_mode
+            b = encoder.encode_single_bundle(ts, address, args)
+            @client.send_raw(b, @hostname, @port)
           end
         end
       end
-
       boot
     end
 
+    def sys(cmd)
+      log "System: #{cmd}"
+      system cmd
+    end
+
     def send(*args)
-      @out_queue << [:send, args]
+      @out_queue << [:send,  args]
     end
 
     def send_at(ts, *args)
-      @out_queue << [:send_at, ts, args]
+      if (a = Thread.current.thread_variable_get(:sonic_pi_spider_time)) && (b = Thread.current.thread_variable_get(:sonic_pi_spider_start_time))
+        vt = a - b
+      elsif st = Thread.current.thread_variable_get(:sonic_pi_spider_start_time)
+        vt = ts - st
+      else
+        vt = -1
+      end
+      @out_queue << [:send_at, vt, ts, args]
     end
 
     def reboot
@@ -80,7 +95,7 @@ module SonicPi
       end
 
       log "Sending /quit command to server"
-      @client.send(OSC::Message.new("/quit"), @hostname, @port)
+      @client.send_raw(OSC::Message.new("/quit").encode, @hostname, @port)
       @osc_in_thread.kill
       @osc_out_thread.kill
     end
@@ -92,7 +107,7 @@ module SonicPi
         server_log "Server already booted..."
         return false
       end
-
+      log "booting server..."
       case os
       when :raspberry
         boot_server_raspberry_pi
@@ -138,13 +153,17 @@ module SonicPi
       when :osx
         osx_scsynth_path
       when :windows
-        # Do some globbing here for both 32/64 bit and different versions of SC
-        "C:/Program Files (x86)/SuperCollider-3.6.6/scsynth.exe"
+        potential_paths = [
+          "#{native_path}/scsynth.exe",
+          "C:/Program Files (x86)/SuperCollider-3.6.6/scsynth.exe",
+          "C:/Program Files/SuperCollider-3.6.6/scsynth.exe"]
+        path = potential_paths.find {|path| File.exists? path }
+        raise "Unable to find SuperCollider. Is it installed? I looked here: #{potential_paths.inspect}" unless path
+        path
       end
     end
 
     def boot_and_wait(&boot_block)
-
       p = Promise.new
       connected = false
 
@@ -156,7 +175,7 @@ module SonicPi
 
       t1 = Thread.new do
         Thread.current.thread_variable_set(:sonic_pi_thread_group, :scsynth_external_booter)
-        boot_s.run
+        boot_s.safe_run
       end
 
       t2 = Thread.new do
@@ -207,7 +226,7 @@ module SonicPi
           # Send a command to start the server and let it fail with the 'input and output sample rates do not match' error
           # On the next boot it will have reset the sample rates and will start properly
           log "WARNING: input and output sample rates do not match. Trying to start SuperCollider again. See the following message:"
-          sc_boot_msg = `'#{scsynth_path}' -u #{@port} -m 131072 -S #{osx_output_sample_rate} &`
+          sc_boot_msg = `'#{scsynth_path}' -a #{num_audio_busses_for_current_os}-u #{@port} -m 131072 -S #{osx_output_sample_rate} &`
           log sc_boot_msg
         end
       rescue
@@ -215,7 +234,7 @@ module SonicPi
       end
 
       boot_and_wait do
-        raise unless system("'#{scsynth_path}' -u #{@port} -m 131072 &")
+        raise unless sys("'#{scsynth_path}' -a #{num_audio_busses_for_current_os} -u #{@port} -m 131072 &")
       end
     end
 
@@ -224,7 +243,8 @@ module SonicPi
       log_boot_msg
       log "Booting on Windows"
       boot_and_wait do
-        system scsynth_path, "-u", @port.to_s
+        @scsynthpid = Process.spawn(scsynth_path, "-u", @port.to_s, "-a", num_audio_busses_for_current_os.to_s)
+        Process.detach(@scsynthpid)
       end
     end
 
@@ -233,7 +253,7 @@ module SonicPi
       log "Booting on Raspberry Pi"
       `killall jackd`
       `killall scsynth`
-      system("jackd -R -T -p 32 -d alsa -n 3 -p 2048 -r 44100& ")
+      sys("jackd -R -T -p 32 -d alsa -n 3 -p 2048 -r 44100& ")
 
       # Wait for Jackd to start
       while `jack_wait -c`.match /not.*/
@@ -243,7 +263,7 @@ module SonicPi
       @jack_pid = `ps cax | grep jackd`.split(" ").first
 
       boot_and_wait do
-        system("scsynth -u #{@port} -m 131072 &")
+        sys("scsynth -u #{@port} -m 131072 -a #{num_audio_busses_for_current_os} -z 256 &")
       end
 
       `jack_connect SuperCollider:out_1 system:playback_1`
@@ -259,7 +279,7 @@ module SonicPi
       if `jack_wait -c`.match /not.*/
         #Jack not running - start a new instance
         log "Jackd not running on system. Starting..."
-        system("jackd -R -T -p 32 -d alsa -n 3 -p 2048 -r 44100& ")
+        sys("jackd -R -T -p 32 -d alsa -n 3 -p 2048 -r 44100& ")
 
         # Wait for Jackd to start
         while `jack_wait -c`.match /not.*/
@@ -271,7 +291,7 @@ module SonicPi
       end
 
       boot_and_wait do
-        system("scsynth -u #{@port} -m 131072 &")
+        sys("scsynth -u #{@port} -m 131072 -a #{num_audio_busses_for_current_os} &")
       end
 
       `jack_connect SuperCollider:out_1 system:playback_1`

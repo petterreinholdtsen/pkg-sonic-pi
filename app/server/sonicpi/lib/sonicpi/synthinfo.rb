@@ -104,14 +104,21 @@ module SonicPi
       #Don't call as part of audio loops as slow. Use .info directly
       res = {}
       arg_defaults.each do |arg, default|
-        default_info = @info[arg] || {}
-        constraints = (default_info[:validations] || []).map{|el| el[1]}
-        new_info = {}
-        new_info[:doc] = default_info[:doc]
-        new_info[:default] = default
-        new_info[:constraints] = constraints
-        new_info[:modulatable] = default_info[:modulatable]
-        res[arg] = new_info
+        if m = /(.*)_slide/.match(arg.to_s) then
+          parent = m[1].to_sym
+          res[parent][:slidable] = true
+          # and don't add to arg_info table
+        else
+          default_info = @info[arg] || {}
+          constraints = (default_info[:validations] || []).map{|el| el[1]}
+          new_info = {}
+          new_info[:doc] = default_info[:doc]
+          new_info[:default] = default_info[:default] || default
+          new_info[:bpm_scale] = default_info[:bpm_scale]
+          new_info[:constraints] = constraints
+          new_info[:modulatable] = default_info[:modulatable]
+          res[arg] = new_info
+        end
       end
 
       res
@@ -122,10 +129,22 @@ module SonicPi
       1
     end
 
-    private
-
     def generic_slide_doc(k)
       return "Amount of time (in seconds) for the #{k} value to change. A long #{k}_slide value means that the #{k} takes a long time to slide from the previous value to the new value. A #{k}_slide of 0 means that the #{k} instantly changes to the new value."
+    end
+
+    def generic_slide_curve_doc(k)
+      return "Shape of the slide curve (only honoured if slide shape is 5). 0 means linear and positive and negative numbers curve the segment up and down respectively."
+    end
+
+    def generic_slide_shape_doc(k)
+      return "Shape of curve. 0: step, 1: linear, 3: sine, 4: welch, 5: custom (use curvature param), 6: squared, 7: cubed"
+    end
+
+    private
+
+    def v_sum_less_than_oet(arg1, arg2, max)
+      [lambda{|args| (args[arg1] + args[arg2]) <= max}, "added to #{arg2.to_sym} must be less than or equal to #{max}"]
     end
 
     def v_positive(arg)
@@ -146,6 +165,10 @@ module SonicPi
 
     def v_less_than(arg,  max)
       [lambda{|args| args[arg] < max}, "must be a value less than #{max}"]
+    end
+
+    def v_less_than_oet(arg,  max)
+      [lambda{|args| args[arg] <= max}, "must be a value less than or equal to #{max}"]
     end
 
     def v_greater_than(arg,  min)
@@ -245,7 +268,7 @@ module SonicPi
 
         :sustain =>
         {
-          :doc => "Amount of time (in seconds) for sound to remain at full amplitude. Longer sustain values result in longer sounds. Full length of sound is attack + sustain + release.",
+          :doc => "Amount of time (in seconds) for sound to remain at sustain level amplitude. Longer sustain values result in longer sounds. Full length of sound is attack + sustain + release.",
           :validations => [v_positive(:sustain)],
           :modulatable => false,
           :bpm_scale => true
@@ -253,7 +276,7 @@ module SonicPi
 
         :release =>
         {
-          :doc => "Amount of time (in seconds) for sound to move from full amplitude to silent. A short release (i.e. 0.01) makes the final part of the sound very percussive (potentially resulting in a click). A longer release (i.e 1) fades the sound out gently. Full length of sound is attack + sustain + release.",
+          :doc => "Amount of time (in seconds) for sound to move from sutain level amplitude to silent. A short release (i.e. 0.01) makes the final part of the sound very percussive (potentially resulting in a click). A longer release (i.e 1) fades the sound out gently. Full length of sound is attack + sustain + release.",
           :validations => [v_positive(:release)],
           :modulatable => false,
           :bpm_scale => true
@@ -336,7 +359,6 @@ module SonicPi
         :mod_range =>
         {
           :doc => "The size of gap between modulation notes. A gap of 12 is one octave.",
-          :validations => [v_positive(:mod_range)],
           :modulatable => true
         },
 
@@ -450,10 +472,16 @@ module SonicPi
       {
         :note => 52,
         :note_slide => 0,
+        :note_slide_shape => 5,
+        :note_slide_curve => 0,
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :pan => 0,
         :pan_slide => 0,
+        :pan_slide_shape => 5,
+        :pan_slide_curve => 0,
 
         :attack => 0,
         :decay => 0,
@@ -505,10 +533,16 @@ module SonicPi
       {
         :note => 52,
         :note_slide => 0,
+        :note_slide_shape => 5,
+        :note_slide_curve => 0,
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :pan => 0,
         :pan_slide => 0,
+        :pan_slide_shape => 5,
+        :pan_slide_curve => 0,
 
         :attack => 0,
         :decay => 0,
@@ -561,10 +595,16 @@ module SonicPi
       {
         :note => 52,
         :note_slide => 0,
+        :note_slide_shape => 5,
+        :note_slide_curve => 0,
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :pan => 0,
         :pan_slide => 0,
+        :pan_slide_shape => 5,
+        :pan_slide_curve => 0,
 
         :attack => 0,
         :decay => 0,
@@ -574,10 +614,14 @@ module SonicPi
         :sustain_level => 1,
         :env_curve => 2,
 
-        :cutoff => lambda{rrand(95, 105)},
+        :cutoff => 100,
         :cutoff_slide => 0,
+        :cutoff_slide_shape => 5,
+        :cutoff_slide_curve => 0,
         :pulse_width => 0.5,
-        :pulse_width_slide => 0
+        :pulse_width_slide => 0,
+        :pulse_width_slide_shape => 5,
+        :pulse_width_slide_curve => 0,
       }
     end
   end
@@ -621,10 +665,16 @@ module SonicPi
       {
         :note => 52,
         :note_slide => 0,
+        :note_slide_shape => 5,
+        :note_slide_curve => 0,
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :pan => 0,
         :pan_slide => 0,
+        :pan_slide_shape => 5,
+        :pan_slide_curve => 0,
 
         :attack => 0,
         :decay => 0,
@@ -636,8 +686,12 @@ module SonicPi
 
         :cutoff => 100,
         :cutoff_slide => 0,
+        :cutoff_slide_shape => 5,
+        :cutoff_slide_curve => 0,
         :detune => 0.1,
-        :detune_slide => 0
+        :detune_slide => 0,
+        :detune_slide_shape => 5,
+        :detune_slide_curve => 0,
       }
     end
   end
@@ -664,10 +718,16 @@ module SonicPi
       {
         :note => 52,
         :note_slide => 0,
+        :note_slide_shape => 5,
+        :note_slide_curve => 0,
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :pan => 0,
         :pan_slide => 0,
+        :pan_slide_shape => 5,
+        :pan_slide_curve => 0,
 
         :attack => 0,
         :decay => 0,
@@ -677,10 +737,19 @@ module SonicPi
         :sustain_level => 1,
         :env_curve => 2,
 
+        :cutoff => 100,
+        :cutoff_slide => 0,
+        :cutoff_slide_shape => 5,
+        :cutoff_slide_curve => 0,
+
         :divisor => 2,
         :divisor_slide => 0,
+        :divisor_slide_shape => 5,
+        :divisor_slide_curve => 0,
         :depth => 1,
-        :depth_slide => 0
+        :depth_slide => 0,
+        :depth_slide_shape => 5,
+        :depth_slide_curve => 0,
       }
     end
 
@@ -773,10 +842,16 @@ module SonicPi
       {
         :note => 52,
         :note_slide => 0,
+        :note_slide_shape => 5,
+        :note_slide_curve => 0,
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :pan => 0,
         :pan_slide => 0,
+        :pan_slide_shape => 5,
+        :pan_slide_curve => 0,
 
         :attack => 0,
         :decay => 0,
@@ -788,12 +863,20 @@ module SonicPi
 
         :cutoff => 100,
         :cutoff_slide => 0,
+        :cutoff_slide_shape => 5,
+        :cutoff_slide_curve => 0,
         :mod_phase => 0.25,
         :mod_phase_slide => 0,
+        :mod_phase_slide_shape => 5,
+        :mod_phase_slide_curve => 0,
         :mod_range => 5,
         :mod_range_slide => 0,
+        :mod_range_slide_shape => 5,
+        :mod_range_slide_curve => 0,
         :mod_pulse_width => 0.5,
         :mod_pulse_width_slide => 0,
+        :mod_pulse_width_slide_shape => 5,
+        :mod_pulse_width_slide_curve => 0,
         :mod_phase_offset => 0,
         :mod_invert_wave => 0,
         :mod_wave => 1
@@ -823,10 +906,16 @@ module SonicPi
       {
         :note => 52,
         :note_slide => 0,
+        :note_slide_shape => 5,
+        :note_slide_curve => 0,
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :pan => 0,
         :pan_slide => 0,
+        :pan_slide_shape => 5,
+        :pan_slide_curve => 0,
 
         :attack => 0,
         :decay => 0,
@@ -838,18 +927,28 @@ module SonicPi
 
         :cutoff => 100,
         :cutoff_slide => 0,
+        :cutoff_slide_shape => 5,
+        :cutoff_slide_curve => 0,
         :mod_phase => 0.25,
 
         :mod_phase_slide => 0,
+        :mod_phase_slide_shape => 5,
+        :mod_phase_slide_curve => 0,
         :mod_range => 5,
         :mod_range_slide => 0,
+        :mod_range_slide_shape => 5,
+        :mod_range_slide_curve => 0,
         :mod_pulse_width => 0.5,
         :mod_pulse_width_slide => 0,
+        :mod_pulse_width_slide_shape => 5,
+        :mod_pulse_width_slide_curve => 0,
         :mod_phase_offset => 0,
         :mod_invert_wave => 0,
         :mod_wave => 1,
         :detune => 0.1,
-        :detune_slide => 0
+        :detune_slide => 0,
+        :detune_slide_shape => 5,
+        :detune_slide_curve => 0,
       }
     end
   end
@@ -876,10 +975,16 @@ module SonicPi
       {
         :note => 52,
         :note_slide => 0,
+        :note_slide_shape => 5,
+        :note_slide_curve => 0,
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :pan => 0,
         :pan_slide => 0,
+        :pan_slide_shape => 5,
+        :pan_slide_curve => 0,
 
         :attack => 0,
         :decay => 0,
@@ -891,12 +996,20 @@ module SonicPi
 
         :cutoff => 100,
         :cutoff_slide => 0,
+        :cutoff_slide_shape => 5,
+        :cutoff_slide_curve => 0,
         :mod_phase => 0.25,
         :mod_phase_slide => 0,
+        :mod_phase_slide_shape => 5,
+        :mod_phase_slide_curve => 0,
         :mod_range => 5,
         :mod_range_slide => 0,
+        :mod_range_slide_shape => 5,
+        :mod_range_slide_curve => 0,
         :mod_pulse_width => 0.5,
         :mod_pulse_width_slide => 0,
+        :mod_pulse_width_slide_shape => 5,
+        :mod_pulse_width_slide_curve => 0,
         :mod_phase_offset => 0,
         :mod_invert_wave => 0,
         :mod_wave => 1
@@ -926,10 +1039,16 @@ module SonicPi
       {
         :note => 52,
         :note_slide => 0,
+        :note_slide_shape => 5,
+        :note_slide_curve => 0,
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :pan => 0,
         :pan_slide => 0,
+        :pan_slide_shape => 5,
+        :pan_slide_curve => 0,
 
         :attack => 0,
         :decay => 0,
@@ -941,12 +1060,20 @@ module SonicPi
 
         :cutoff => 100,
         :cutoff_slide => 0,
+        :cutoff_slide_shape => 5,
+        :cutoff_slide_curve => 0,
         :mod_phase => 0.25,
         :mod_phase_slide => 0,
+        :mod_phase_slide_shape => 5,
+        :mod_phase_slide_curve => 0,
         :mod_range => 5,
         :mod_range_slide => 0,
+        :mod_range_slide_shape => 5,
+        :mod_range_slide_curve => 0,
         :mod_pulse_width => 0.5,
         :mod_pulse_width_slide => 0,
+        :mod_pulse_width_slide_shape => 5,
+        :mod_pulse_width_slide_curve => 0,
         :mod_phase_offset => 0,
         :mod_invert_wave => 0,
         :mod_wave => 1
@@ -976,10 +1103,16 @@ module SonicPi
       {
         :note => 52,
         :note_slide => 0,
+        :note_slide_shape => 5,
+        :note_slide_curve => 0,
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :pan => 0,
         :pan_slide => 0,
+        :pan_slide_shape => 5,
+        :pan_slide_curve => 0,
 
         :attack => 0,
         :decay => 0,
@@ -991,17 +1124,27 @@ module SonicPi
 
         :cutoff => 100,
         :cutoff_slide => 0,
+        :cutoff_slide_shape => 5,
+        :cutoff_slide_curve => 0,
         :mod_phase => 0.25,
         :mod_phase_slide => 0,
+        :mod_phase_slide_shape => 5,
+        :mod_phase_slide_curve => 0,
         :mod_range => 5,
         :mod_range_slide => 0,
+        :mod_range_slide_shape => 5,
+        :mod_range_slide_curve => 0,
         :mod_pulse_width => 0.5,
         :mod_pulse_width_slide => 0,
+        :mod_pulse_width_slide_shape => 5,
+        :mod_pulse_width_slide_curve => 0,
         :mod_phase_offset => 0,
         :mod_invert_wave => 0,
         :mod_wave => 1,
         :pulse_width => 0.5,
-        :pulse_width_slide => 0
+        :pulse_width_slide => 0,
+        :pulse_width_slide_shape => 5,
+        :pulse_width_slide_curve => 0,
       }
     end
   end
@@ -1028,10 +1171,16 @@ module SonicPi
       {
         :note => 52,
         :note_slide => 0,
+        :note_slide_shape => 5,
+        :note_slide_curve => 0,
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :pan => 0,
         :pan_slide => 0,
+        :pan_slide_shape => 5,
+        :pan_slide_curve => 0,
 
         :attack => 0,
         :decay => 0,
@@ -1041,55 +1190,127 @@ module SonicPi
         :sustain_level => 1,
         :env_curve => 2,
 
-        :cutoff => 80,
+        :cutoff => 120,
         :cutoff_slide => 0,
+        :cutoff_slide_shape => 5,
+        :cutoff_slide_curve => 0,
         :cutoff_min => 30,
+        :cutoff_min_slide => 0,
+        :cutoff_min_slide_shape => 5,
+        :cutoff_min_slide_curve => 0,
+        :cutoff_attack => :attack,
+        :cutoff_decay => :decay,
+        :cutoff_sustain => :sustain,
+        :cutoff_release => :release,
+        :cutoff_attack_level => 1,
+        :cutoff_sustain_level => 1,
         :res => 0.1,
         :res_slide => 0,
+        :res_slide_shape => 5,
+        :res_slide_curve => 0,
         :wave => 0,
         :pulse_width => 0.5,
-        :pulse_width_slide => 0
+        :pulse_width_slide => 0,
+        :pulse_width_slide_shape => 5,
+        :pulse_width_slide_curve => 0,
       }
     end
 
     def specific_arg_info
       {
-
-        :cutoff =>
+        :cutoff_min =>
         {
-          :doc => "",
-          :validations => [v_positive(:cutoff), v_less_than(:cutoff, 130)],
+          :doc => "The minimum  cutoff value.",
+          :validations => [v_less_than_oet(:cutoff_min, 130)],
           :modulatable => true
         },
 
-        :cutoff_min =>
+        :cutoff_min_slide =>
         {
-          :doc => "",
-          :validations => [v_positive(:cutoff), v_less_than(:cutoff_min, 130)],
+          :doc => generic_slide_doc(:cutoff_min),
+          :validations => [v_positive(:cutoff_min_slide)],
+          :modulatable => true,
+          :bpm_scale => true
+        },
+
+        :cutoff =>
+        {
+          :doc => "The maximum cutoff value as a MIDI note",
+          :validations => [v_less_than_oet(:cutoff, 130)],
           :modulatable => true
+        },
+
+        :cutoff_slide =>
+        {
+          :doc => generic_slide_doc(:cutoff),
+          :validations => [v_positive(:cutoff_slide)],
+          :modulatable => true,
+          :bpm_scale => true
+        },
+
+        :cutoff_attack_level =>
+        {
+          :doc => "The peak cutoff (value of cutoff at peak of attack) as a value between 0 and 1 where 0 is the :cutoff_min and 1 is the :cutoff value",
+          :validations => [v_between_inclusive(:cutoff_attack_level, 0, 1)],
+          :modulatable => false
+        },
+
+        :cutoff_sustain_level =>
+        {
+          :doc => "The sustain cutoff (value of cutoff at sustain time) as a value between 0 and 1 where 0 is the :cutoff_min and 1 is the :cutoff value.",
+          :validations => [v_between_inclusive(:cutoff_sustain_level, 0, 1)],
+          :modulatable => false
+        },
+
+        :cutoff_attack =>
+        {
+          :doc => "Attack time for cutoff filter. Amount of time (in seconds) for sound to reach full cutoff value. Default value is set to match amp envelope's attack value.",
+          :validations => [v_positive(:cutoff_attack)],
+          :modulatable => false,
+          :default => "attack",
+          :bpm_scale => true
+        },
+
+        :cutoff_decay =>
+        {
+          :doc => "Decay time for cutoff filter. Amount of time (in seconds) for sound to reach full cutoff value. Default value is set to match amp envelope's decay value.",
+          :validations => [v_positive(:cutoff_decay)],
+          :modulatable => false,
+          :default => "decay",
+          :bpm_scale => true
+        },
+
+        :cutoff_sustain =>
+        {
+          :doc => "Amount of time for cutoff value to remain at sustain level in seconds. Default value is set to match amp envelope's sustain value.",
+          :validations => [v_positive(:cutoff_sustain)],
+          :modulatable => false,
+          :default => "sustain",
+          :bpm_scale => true
+        },
+
+        :cutoff_release =>
+        {
+          :doc => "Amount of time (in seconds) for sound to move from cutoff sustain value  to cutoff min value. Default value is set to match amp envelope's release value.",
+          :validations => [v_positive(:cutoff_release)],
+          :modulatable => false,
+          :default => "release",
+          :bpm_scale => true
+        },
+
+        :cutoff_env_curve =>
+        {
+          :doc => "Select the shape of the curve between levels in the cutoff envelope. 1=linear, 2=exponential, 3=sine, 4=welch, 6=squared, 7=cubed",
+          :validations => [v_one_of(:cutoff_env_curve, [1, 2, 3, 4, 6, 7])],
+          :modulatable => false
         },
 
         :wave =>
         {
-          :doc => "Wave type - 0 saw, 1 pulse, 2 triangle",
+          :doc => "Wave type - 0 saw, 1 pulse, 2 triangle. Different waves will produce different sounds.",
           :validations => [v_one_of(:wave, [0, 1, 2])],
           :modulatable => true
         },
-
-        :pulse_width =>
-        {
-          :doc => "Only valid if wave is type pulse.",
-          :validations => [v_positive(:pulse_width)],
-          :modulatable => true
-        },
-
-        :pulse_width_slide =>
-        {
-          :doc => "Time in seconds for pulse width to change. Only valid if wave is type pulse.",
-          :validations => [v_positive(:pulse_width_slide)],
-          :modulatable => true,
-          :bpm_scale => true
-        }
 
       }
     end
@@ -1116,10 +1337,16 @@ module SonicPi
       {
         :note => 52,
         :note_slide => 0,
+        :note_slide_shape => 5,
+        :note_slide_curve => 0,
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :pan => 0,
         :pan_slide => 0,
+        :pan_slide_shape => 5,
+        :pan_slide_curve => 0,
 
         :attack => 0,
         :decay => 0,
@@ -1131,8 +1358,12 @@ module SonicPi
 
         :cutoff => 130,
         :cutoff_slide => 0,
+        :cutoff_slide_shape => 5,
+        :cutoff_slide_curve => 0,
         :res => 0.3,
-        :res_slide => 0
+        :res_slide => 0,
+        :res_slide_shape => 5,
+        :res_slide_curve => 0,
 
       }
     end
@@ -1160,10 +1391,16 @@ module SonicPi
       {
         :note => 52,
         :note_slide => 0,
+        :note_slide_shape => 5,
+        :note_slide_curve => 0,
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :pan => 0,
         :pan_slide => 0,
+        :pan_slide_shape => 5,
+        :pan_slide_curve => 0,
 
         :attack => 0,
         :decay => 0,
@@ -1174,20 +1411,30 @@ module SonicPi
 
         :cutoff => 100,
         :cutoff_slide => 0,
+        :cutoff_slide_shape => 5,
+        :cutoff_slide_curve => 0,
         :res => 0.1,
         :res_slide => 0,
+        :res_slide_shape => 5,
+        :res_slide_curve => 0,
 
         :phase => 1,
         :phase_slide => 0,
+        :phase_slide_shape => 5,
+        :phase_slide_curve => 0,
         :phase_offset => 0,
 
         :wave => 3,
         :invert_wave => 1,
         :range => 24,
         :range_slide => 0,
+        :range_slide_shape => 5,
+        :range_slide_curve => 0,
         :disable_wave => 0,
         :pulse_width => 0.5,
-        :pulse_width_slide => 0
+        :pulse_width_slide => 0,
+        :pulse_width_slide_shape => 5,
+        :pulse_width_slide_curve => 0,
 
       }
     end
@@ -1288,10 +1535,16 @@ end
       {
         :note => 52,
         :note_slide => 0,
+        :note_slide_shape => 5,
+        :note_slide_curve => 0,
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :pan => 0,
         :pan_slide => 0,
+        :pan_slide_shape => 5,
+        :pan_slide_curve => 0,
 
         :attack => 0,
         :decay => 0,
@@ -1303,8 +1556,12 @@ end
 
         :cutoff => 110,
         :cutoff_slide => 0,
+        :cutoff_slide_shape => 5,
+        :cutoff_slide_curve => 0,
         :res => 0.3,
-        :res_slide => 0
+        :res_slide => 0,
+        :res_slide_shape => 5,
+        :res_slide_curve => 0,
       }
     end
 
@@ -1334,8 +1591,12 @@ end
       {
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :pan => 0,
         :pan_slide => 0,
+        :pan_slide_shape => 5,
+        :pan_slide_curve => 0,
 
         :attack => 0,
         :decay => 0,
@@ -1347,8 +1608,12 @@ end
 
         :cutoff => 110,
         :cutoff_slide => 0,
+        :cutoff_slide_shape => 5,
+        :cutoff_slide_curve => 0,
         :res => 1,
-        :res_slide => 0
+        :res_slide => 0,
+        :res_slide_shape => 5,
+        :res_slide_curve => 0,
       }
     end
 
@@ -1450,8 +1715,12 @@ end
       {
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :pan => 0,
         :pan_slide => 0,
+        :pan_slide_shape => 5,
+        :pan_slide_curve => 0,
         :input => 0
       }
     end
@@ -1482,10 +1751,16 @@ end
       {
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :pan => 0,
         :pan_slide => 0,
+        :pan_slide_shape => 5,
+        :pan_slide_curve => 0,
         :rate => 1,
-        :rate_slide => 0
+        :rate_slide => 0,
+        :rate_slide_shape => 5,
+        :rate_slide_curve => 0,
       }
     end
   end
@@ -1529,8 +1804,12 @@ end
       {
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :pan => 0,
         :pan_slide => 0,
+        :pan_slide_shape => 5,
+        :pan_slide_curve => 0,
 
         :attack => 0,
         :decay => 0,
@@ -1631,7 +1910,9 @@ end
     def arg_defaults
       {
         :amp => 1,
-        :amp_slide => 0.2
+        :amp_slide => 0.1,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
       }
     end
 
@@ -1690,15 +1971,25 @@ end
       {
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :mix => 0.4,
         :mix_slide => 0,
+        :mix_slide_shape => 5,
+        :mix_slide_curve => 0,
         :pre_amp => 1,
         :pre_amp_slide => 0,
+        :pre_amp_slide_shape => 5,
+        :pre_amp_slide_curve => 0,
 
         :room => 0.6,
         :room_slide => 0,
+        :room_slide_shape => 5,
+        :room_slide_curve => 0,
         :damp => 0.5,
-        :damp_slide => 0
+        :damp_slide => 0,
+        :damp_slide_shape => 5,
+        :damp_slide_curve => 0,
       }
     end
 
@@ -1761,14 +2052,24 @@ end
       {
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :mix => 1,
         :mix_slide => 0,
+        :mix_slide_shape => 5,
+        :mix_slide_curve => 0,
         :pre_amp => 1,
         :pre_amp_slide => 0,
+        :pre_amp_slide_shape => 5,
+        :pre_amp_slide_curve => 0,
         :sample_rate => 10000,
         :sample_rate_slide => 0,
+        :sample_rate_slide_shape => 5,
+        :sample_rate_slide_curve => 0,
         :bits => 8,
-        :bits_slide => 0
+        :bits_slide => 0,
+        :bits_slide_shape => 5,
+        :bits_slide_curve => 0,
       }
     end
 
@@ -1828,7 +2129,9 @@ end
     def arg_defaults
       {
         :amp => 1,
-        :amp_slide => 0
+        :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
       }
     end
   end
@@ -1854,17 +2157,29 @@ end
       {
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :mix => 1,
         :mix_slide => 0,
+        :mix_slide_shape => 5,
+        :mix_slide_curve => 0,
         :pre_amp => 1,
         :pre_amp_slide => 0,
+        :pre_amp_slide_shape => 5,
+        :pre_amp_slide_curve => 0,
         :phase => 0.25,
         :phase_slide => 0,
+        :phase_slide_shape => 5,
+        :phase_slide_curve => 0,
         :decay => 2,
         :decay_slide => 0,
+        :decay_slide_shape => 5,
+        :decay_slide_curve => 0,
         :max_phase => 2,
         :amp => 1,
-        :amp_slide => 0
+        :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
       }
     end
 
@@ -1939,18 +2254,32 @@ end
       {
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :mix => 1,
         :mix_slide => 0,
+        :mix_slide_shape => 5,
+        :mix_slide_curve => 0,
         :pre_amp => 1,
         :pre_amp_slide => 0,
+        :pre_amp_slide_shape => 5,
+        :pre_amp_slide_curve => 0,
         :phase => 0.25,
         :phase_slide => 0,
+        :phase_slide_shape => 5,
+        :phase_slide_curve => 0,
         :amp_min => 0,
         :amp_min_slide => 0,
+        :amp_min_slide_shape => 5,
+        :amp_min_slide_curve => 0,
         :amp_max => 1,
         :amp_max_slide => 0,
+        :amp_max_slide_shape => 5,
+        :amp_max_slide_curve => 0,
         :pulse_width => 0.5,
         :pulse_width_slide => 0,
+        :pulse_width_slide_shape => 5,
+        :pulse_width_slide_curve => 0,
         :phase_offset => 0,
         :wave => 1,
         :invert_wave => 0
@@ -2081,22 +2410,38 @@ end
       {
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :mix => 1,
         :mix_slide => 0,
+        :mix_slide_shape => 5,
+        :mix_slide_curve => 0,
         :pre_amp => 1,
         :pre_amp_slide => 0,
+        :pre_amp_slide_shape => 5,
+        :pre_amp_slide_curve => 0,
         :phase => 0.5,
         :phase_slide => 0,
+        :phase_slide_shape => 5,
+        :phase_slide_curve => 0,
         :cutoff_min => 60,
         :cutoff_min_slide => 0,
+        :cutoff_min_slide_shape => 5,
+        :cutoff_min_slide_curve => 0,
         :cutoff_max => 120,
         :cutoff_max_slide => 0,
+        :cutoff_max_slide_shape => 5,
+        :cutoff_max_slide_curve => 0,
         :res => 0.2,
         :res_slide => 0,
+        :res_slide_shape => 5,
+        :res_slide_curve => 0,
         :phase_offset => 0,
         :wave => 0,
         :pulse_width => 0.5,
         :pulse_width_slide => 0,
+        :pulse_width_slide_shape => 5,
+        :pulse_width_slide_curve => 0,
         :filter => 0
       }
     end
@@ -2197,19 +2542,33 @@ end
       {
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :mix => 1,
         :mix_slide => 0,
+        :mix_slide_shape => 5,
+        :mix_slide_curve => 0,
         :pre_amp => 1,
         :pre_amp_slide => 0,
+        :pre_amp_slide_shape => 5,
+        :pre_amp_slide_curve => 0,
         :phase => 4,
         :phase_slide => 0,
+        :phase_slide_shape => 5,
+        :phase_slide_curve => 0,
         :phase_offset => 0,
         :cutoff_min => 60,
         :cutoff_min_slide => 0,
+        :cutoff_min_slide_shape => 5,
+        :cutoff_min_slide_curve => 0,
         :cutoff_max => 120,
         :cutoff_max_slide => 0,
+        :cutoff_max_slide_shape => 5,
+        :cutoff_max_slide_curve => 0,
         :res => 0.2,
-        :res_slide => 0
+        :res_slide => 0,
+        :res_slide_shape => 5,
+        :res_slide_curve => 0,
       }
     end
 
@@ -2301,19 +2660,33 @@ end
       {
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :mix => 1,
         :pre_amp => 1,
         :pre_amp_slide => 0,
+        :pre_amp_slide_shape => 5,
+        :pre_amp_slide_curve => 0,
         :threshold => 0.2,
         :threshold_slide => 0,
+        :threshold_slide_shape => 5,
+        :threshold_slide_curve => 0,
         :clamp_time => 0.01,
         :clamp_time_slide => 0,
+        :clamp_time_slide_shape => 5,
+        :clamp_time_slide_curve => 0,
         :slope_above => 0.5,
         :slope_above_slide => 0,
+        :slope_above_slide_shape => 5,
+        :slope_above_slide_curve => 0,
         :slope_below => 1,
         :slope_below_slide => 0,
+        :slope_below_slide_shape => 5,
+        :slope_below_slide_curve => 0,
         :relax_time => 0.01,
-        :relax_time_slide => 0
+        :relax_time_slide => 0,
+        :relax_time_slide_shape => 5,
+        :relax_time_slide_curve => 0,
       }
     end
 
@@ -2399,6 +2772,371 @@ end
     end
   end
 
+  class FXHarmoniser < FXInfo
+    def name
+      "Harmoniser"
+    end
+
+    def introduced
+      Version.new(2,1,0)
+    end
+
+    def synth_name
+      "fx_harmoniser"
+    end
+
+    def arg_defaults
+      {
+        :amp => 1,
+        :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
+        :mix => 1,
+        :mix_slide => 0,
+        :mix_slide_shape => 5,
+        :mix_slide_curve => 0,
+        :pre_amp => 1,
+        :pre_amp_slide => 0,
+        :pre_amp_slide_shape => 5,
+        :pre_amp_slide_curve => 0,
+        :oct1_amp => 1,
+        :oct1_amp_slide => 0,
+        :oct1_amp_slide_shape => 5,
+        :oct1_amp_slide_curve => 0,
+        :oct2_amp => 1,
+        :oct2_amp_slide => 0,
+        :oct2_amp_slide_shape => 5,
+        :oct2_amp_slide_curve => 0,
+        :clean_amp => 1,
+        :clean_amp_slide => 0,
+        :clean_amp_slide_shape => 5,
+        :clean_amp_slide_curve => 0,
+      }
+    end
+
+    def specific_arg_info
+      {
+        :oct1_amp =>
+        {
+          :doc => "Volume of the signal 1 octave below the input",
+          :validations => [v_positive(:oct1_amp)],
+          :modulatable => true
+        },
+        :oct2_amp =>
+        {
+          :doc => "Volume of the signal 2 octaves below the input",
+          :validations => [v_positive(:oct2_amp)],
+          :modulatable => true
+        },
+        :clean_amp =>
+        {
+          :doc => "Volume of the low-pass filtered clean signal from the input",
+          :validations => [v_positive(:clean_amp)],
+          :modulatable => true
+        }
+      }
+    end
+
+    def doc
+      ""
+    end
+  end
+
+  class FXChorus < FXInfo
+    def name
+      "Chorus"
+    end
+
+    def introduced
+      Version.new(2,1,0)
+    end
+
+    def synth_name
+      "fx_chorus"
+    end
+
+    def arg_defaults
+      {
+        :amp => 1,
+        :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
+        :mix => 1,
+        :mix_slide => 0,
+        :mix_slide_shape => 5,
+        :mix_slide_curve => 0,
+        :pre_amp => 1,
+        :pre_amp_slide => 0,
+        :pre_amp_slide_shape => 5,
+        :pre_amp_slide_curve => 0,
+        :phase => 0.25,
+        :phase_slide => 0,
+        :phase_slide_shape => 5,
+        :phase_slide_curve => 0,
+        :decay => 0.00001,
+        :decay_slide => 0,
+        :decay_slide_shape => 5,
+        :decay_slide_curve => 0,
+        :max_phase => 1,
+        :amp => 1,
+        :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
+      }
+    end
+
+    def specific_arg_info
+      {
+        :max_phase =>
+        {
+          :doc => "The maximum phase duration in seconds.",
+          :validations => [v_positive_not_zero(:max_phase)],
+          :modulatable => false
+        },
+
+        :phase =>
+        {
+          :doc => "The time between echoes in seconds.",
+          :validations => [v_positive_not_zero(:phase)],
+          :modulatable => true,
+          :bpm_scale => true
+
+        },
+
+        :phase_slide =>
+        {
+          :doc => "Slide time in seconds between phase values",
+          :validations => [v_positive(:phase_slide)],
+          :modulatable => true,
+          :bpm_scale => true
+        },
+
+        :decay =>
+        {
+          :doc => "The time it takes for the echoes to fade away in seconds.",
+          :validations => [v_positive_not_zero(:decay)],
+          :modulatable => true,
+          :bpm_scale => true
+        },
+
+        :decay_slide =>
+        {
+          :doc => "Slide time in seconds between decay times",
+          :validations => [v_positive(:decay_slide)],
+          :modulatable => true,
+          :bpm_scale => true
+        }
+      }
+    end
+
+    def kill_delay(args_h)
+      args_h[:decay] || arg_defaults[:decay]
+    end
+
+    def doc
+      ""
+    end
+  end
+
+  class FXRingMod < FXInfo
+    def name
+      "Ring Modulator"
+    end
+
+    def introduced
+      Version.new(2,1,0)
+    end
+
+    def synth_name
+      "fx_ring_mod"
+    end
+
+    def arg_defaults
+      {
+        :amp => 1,
+        :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
+        :mix => 1,
+        :mix_slide => 0,
+        :mix_slide_shape => 5,
+        :mix_slide_curve => 0,
+        :pre_amp => 1,
+        :pre_amp_slide => 0,
+        :pre_amp_slide_shape => 5,
+        :pre_amp_slide_curve => 0,
+        :freq => 100,
+        :freq_slide => 0,
+        :freq_slide_shape => 5,
+        :freq_slide_curve => 0,
+        :mod_amp => 1,
+        :mod_amp_slide => 0,
+        :mod_amp_slide_shape => 5,
+        :mod_amp_slide_curve => 0,
+      }
+    end
+
+    def specific_arg_info
+      {
+
+
+      }
+    end
+
+    def doc
+      ""
+    end
+  end
+
+  class FXBPF < FXInfo
+    def name
+      "Band Pass Filter"
+    end
+
+    def introduced
+      Version.new(2,1,0)
+    end
+
+    def synth_name
+      "fx_bpf"
+    end
+
+    def arg_defaults
+      {
+        :amp => 1,
+        :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
+        :mix => 1,
+        :mix_slide => 0,
+        :mix_slide_shape => 5,
+        :mix_slide_curve => 0,
+        :pre_amp => 1,
+        :pre_amp_slide => 0,
+        :pre_amp_slide_shape => 5,
+        :pre_amp_slide_curve => 0,
+        :freq => 100,
+        :freq_slide => 0,
+        :freq_slide_shape => 5,
+        :freq_slide_curve => 0,
+        :res => 0.5,
+        :res_slide => 0,
+        :res_slide_shape => 5,
+        :res_slide_curve => 0,
+      }
+    end
+
+    def specific_arg_info
+      {
+
+
+      }
+    end
+
+    def doc
+      ""
+    end
+  end
+
+  class FXRBPF < FXInfo
+    def name
+      "Resonant Band Pass Filter"
+    end
+
+    def introduced
+      Version.new(2,1,0)
+    end
+
+    def synth_name
+      "fx_rbpf"
+    end
+
+    def arg_defaults
+      {
+        :amp => 1,
+        :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
+        :mix => 1,
+        :mix_slide => 0,
+        :mix_slide_shape => 5,
+        :mix_slide_curve => 0,
+        :pre_amp => 1,
+        :pre_amp_slide => 0,
+        :pre_amp_slide_shape => 5,
+        :pre_amp_slide_curve => 0,
+        :freq => 100,
+        :freq_slide => 0,
+        :freq_slide_shape => 5,
+        :freq_slide_curve => 0,
+        :res => 0.5,
+        :res_slide => 0,
+        :res_slide_shape => 5,
+        :res_slide_curve => 0,
+      }
+    end
+
+    def specific_arg_info
+      {
+
+
+      }
+    end
+
+    def doc
+      ""
+    end
+  end
+
+  class FXNRBPF < FXInfo
+    def name
+      "Normalised Resonant Band Pass Filter"
+    end
+
+    def introduced
+      Version.new(2,1,0)
+    end
+
+    def synth_name
+      "fx_nrbpf"
+    end
+
+    def arg_defaults
+      {
+        :amp => 1,
+        :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
+        :mix => 1,
+        :mix_slide => 0,
+        :mix_slide_shape => 5,
+        :mix_slide_curve => 0,
+        :pre_amp => 1,
+        :pre_amp_slide => 0,
+        :pre_amp_slide_shape => 5,
+        :pre_amp_slide_curve => 0,
+        :freq => 100,
+        :freq_slide => 0,
+        :freq_slide_shape => 5,
+        :freq_slide_curve => 0,
+        :res => 0.5,
+        :res_slide => 0,
+        :res_slide_shape => 5,
+        :res_slide_curve => 0,
+      }
+    end
+
+    def specific_arg_info
+      {
+
+
+      }
+    end
+
+    def doc
+      ""
+    end
+  end
 
   class FXRLPF < FXInfo
     def name
@@ -2417,14 +3155,24 @@ end
       {
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :mix => 1,
         :mix_slide => 0,
+        :mix_slide_shape => 5,
+        :mix_slide_curve => 0,
         :pre_amp => 1,
         :pre_amp_slide => 0,
+        :pre_amp_slide_shape => 5,
+        :pre_amp_slide_curve => 0,
         :cutoff => 100,
         :cutoff_slide => 0,
+        :cutoff_slide_shape => 5,
+        :cutoff_slide_curve => 0,
         :res => 0.5,
-        :res_slide => 0
+        :res_slide => 0,
+        :res_slide_shape => 5,
+        :res_slide_curve => 0,
       }
     end
 
@@ -2479,14 +3227,24 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
       {
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :mix => 1,
         :mix_slide => 0,
+        :mix_slide_shape => 5,
+        :mix_slide_curve => 0,
         :pre_amp => 1,
         :pre_amp_slide => 0,
+        :pre_amp_slide_shape => 5,
+        :pre_amp_slide_curve => 0,
         :cutoff => 100,
         :cutoff_slide => 0,
+        :cutoff_slide_shape => 5,
+        :cutoff_slide_curve => 0,
         :res => 0.5,
-        :res_slide => 0
+        :res_slide => 0,
+        :res_slide_shape => 5,
+        :res_slide_curve => 0,
       }
     end
 
@@ -2535,12 +3293,20 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
       {
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :mix => 1,
         :mix_slide => 0,
+        :mix_slide_shape => 5,
+        :mix_slide_curve => 0,
         :pre_amp => 1,
         :pre_amp_slide => 0,
+        :pre_amp_slide_shape => 5,
+        :pre_amp_slide_curve => 0,
         :cutoff => 100,
-        :cutoff_slide => 0
+        :cutoff_slide => 0,
+        :cutoff_slide_shape => 5,
+        :cutoff_slide_curve => 0,
       }
     end
 
@@ -2591,12 +3357,20 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
       {
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :mix => 1,
         :mix_slide => 0,
+        :mix_slide_shape => 5,
+        :mix_slide_curve => 0,
         :pre_amp => 1,
         :pre_amp_slide => 0,
+        :pre_amp_slide_shape => 5,
+        :pre_amp_slide_curve => 0,
         :cutoff => 100,
-        :cutoff_slide => 0
+        :cutoff_slide => 0,
+        :cutoff_slide_shape => 5,
+        :cutoff_slide_curve => 0,
       }
     end
   end
@@ -2640,14 +3414,24 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
       {
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :mix => 1,
         :mix_slide => 0,
+        :mix_slide_shape => 5,
+        :mix_slide_curve => 0,
         :pre_amp => 1,
         :pre_amp_slide => 0,
+        :pre_amp_slide_shape => 5,
+        :pre_amp_slide_curve => 0,
         :level => 1,
         :level_slide => 0,
+        :level_slide_shape => 5,
+        :level_slide_curve => 0,
         :amp => 1,
-        :amp_slide => 0
+        :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
       }
     end
 
@@ -2692,12 +3476,20 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
       {
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :mix => 1,
         :mix_slide => 0,
+        :mix_slide_shape => 5,
+        :mix_slide_curve => 0,
         :pre_amp => 1,
         :pre_amp_slide => 0,
+        :pre_amp_slide_shape => 5,
+        :pre_amp_slide_curve => 0,
         :distort => 0.5,
-        :distort_slide => 0
+        :distort_slide => 0,
+        :distort_slide_shape => 5,
+        :distort_slide_curve => 0,
       }
     end
 
@@ -2744,12 +3536,20 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
       {
         :amp => 1,
         :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
         :mix => 1,
         :mix_slide => 0,
+        :mix_slide_shape => 5,
+        :mix_slide_curve => 0,
         :pre_amp => 1,
         :pre_amp_slide => 0,
+        :pre_amp_slide_shape => 5,
+        :pre_amp_slide_curve => 0,
         :pan => 0,
-        :pan_slide => 0
+        :pan_slide => 0,
+        :pan_slide_shape => 5,
+        :pan_slide_curve => 0,
       }
     end
   end
@@ -2859,6 +3659,29 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
           :bass_voxy_hit_c,
           :bass_dnb_f]},
 
+      :snares => {
+        :desc => "Snare Drums",
+        :prefix => "ns_",
+        :samples => [
+          :sn_dub,
+          :sn_dolf,
+          :sn_zome]},
+
+      :bass_drums => {
+        :desc => "Bass Drums",
+        :prefix => "bd_",
+        :samples => [
+          :bd_pure,
+          :bd_808,
+          :bd_zum,
+          :bd_gas,
+          :bd_sone,
+          :bd_haus,
+          :bd_zome,
+          :bd_boom,
+          :bd_klub,
+          :bd_fat ]},
+
       :loop => {
         :desc => "Sounds for Looping",
         :prefix => "loop_",
@@ -2866,7 +3689,9 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
           :loop_industrial,
           :loop_compus,
           :loop_amen,
-          :loop_amen_full]}}
+          :loop_amen_full,
+          :loop_garzul,
+          :loop_mika]}}
 
     @@all_samples = (@@grouped_samples.values.reduce([]) {|s, el| s << el[:samples]}).flatten
 
@@ -2875,6 +3700,7 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
       :dull_bell => DullBell.new,
       :pretty_bell => PrettyBell.new,
       :beep => Beep.new,
+      :sine => Beep.new,
       :saw => Saw.new,
       :pulse => Pulse.new,
       :tri => Tri.new,
@@ -2884,6 +3710,7 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
       :mod_saw => ModSaw.new,
       :mod_dsaw => ModDSaw.new,
       :mod_sine => ModSine.new,
+      :mod_beep => ModSine.new,
       :mod_tri => ModTri.new,
       :mod_pulse => ModPulse.new,
       :tb303 => TB303.new,
@@ -2940,7 +3767,14 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
       :fx_distortion => FXDistortion.new,
       :fx_replace_distortion => FXDistortion.new,
       :fx_pan => FXPan.new,
-      :fx_replace_pan => FXPan.new
+      :fx_replace_pan => FXPan.new,
+      # WIP effects
+      # :fx_bpf => FXBPF.new,
+      # :fx_rbpf => FXRBPF.new,
+      # :fx_nrbpf => FXNRBPF.new,
+      # :fx_ring_mod => FXRingMod.new,
+      # :fx_chorus => FXChorus.new,
+      # :fx_harmoniser => FXHarmoniser.new,
 
       }
 
@@ -2983,6 +3817,7 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
 
         next if v.is_a? StudioInfo
         doc = ""
+
         doc << '<p> <span style="font-size:25px; color:white;background-color:deeppink;">'
         doc << "<font #{hv_face}>" << v.name << "</font></span></p>\n"
         if klass == SynthInfo
@@ -3004,7 +3839,7 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
           bg_colour = cnt.even? ? "#5e5e5e" : "#E8E8E8"
           fnt_colour = cnt.even? ? "white" : "#5e5e5e"
           cnt += 1
-          arglist << "<td bgcolor=\"#{bg_colour}\">\n  <pre><h4><font color=\"#{fnt_colour}\">#{ak}: </font></h4</pre>\n</td>\n<td bgcolor=\"#{bg_colour}\">\n  <pre><h4><font color=\"#{fnt_colour}\">#{av[:default]}</font></h4></pre>\n</td>\n"
+          arglist << "<td bgcolor=\"#{bg_colour}\">\n  <pre><h4><font color=\"#{fnt_colour}\"><a href=\"##{ak}\" style=\"text-decoration:none; color: #{fnt_colour};\">#{ak}:</a> </font></h4</pre>\n</td>\n<td bgcolor=\"#{bg_colour}\">\n  <pre><h4><font color=\"#{fnt_colour}\">#{av[:default]}</font></h4></pre>\n</td>\n"
         end
         arglist << "</tr></table>\n"
         doc << arglist
@@ -3015,16 +3850,18 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
 
         doc << "<p><font size=\"3\", #{hv_face}>\n"
         doc << "<span style=\"color:white;background-color:darkorange;\">"
-        doc << "Introduced in v" << v.introduced.to_s << "\n</span></p>\n"
+        doc << "Introduced in " << v.introduced.to_s << "\n</span></p>\n"
 
         doc << "<table cellpadding=\"8\">\n"
         doc << "<tr><th></th><th></th></tr>\n"
 
         cnt = 0
+        any_slidable = false
         v.arg_info.each do |ak, av|
           cnt += 1
           background_colour = cnt.even? ? "#F8F8F8" : "#E8E8E8"
-          key_bg_colour = cnt.even? ? "#E6F0FF" : "#B2D1FF"
+          key_bg_colour = cnt.even? ? "#74ACFF" : "#B2D1FF"
+          doc << " <a name=\"#{ak}\"></a>\n"
           doc << "  <tr bgcolor=\"#{background_colour}\">\n"
           doc << "    <td bgcolor=\"#{key_bg_colour}\"><h3><pre> #{ak}:</pre></h3></td>\n"
           doc << "      <td>\n"
@@ -3032,12 +3869,47 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
           doc << "          #{av[:doc] || 'write me'}<br/></font>\n"
           doc << "          <em><font size=\"3\", #{hv_face}>Default: #{av[:default]}<br/>\n"
           doc << "          #{av[:constraints].join(",")}<br/>\n" unless av[:constraints].empty?
-          doc << "          #{av[:modulatable] ? "May be changed whilst playing" : "Can not be changed once set"}\n"
+          doc << "          #{av[:modulatable] ? "May be changed whilst playing" : "Can not be changed once set"}<br/>\n"
+          doc << "          <a href=#slide>Has slide parameters to shape changes</a><br/>\n" if av[:slidable]
+          doc << "          Scaled with current BPM value\n" if av[:bpm_scale]
           doc << "       </font></em>\n"
           doc << "     </td>\n"
           doc << " </tr>\n"
+          any_slidable = true if av[:slidable]
         end
         doc << "  </table>\n"
+
+        if any_slidable then
+          doc << "<a name=slide><h1>Slide Parameters</h1>\n";
+          doc << "Any parameter that is slidable has three additional parameters named _slide, _slide_curve, and _slide_shape.  For example, 'amp' is slidable, so you can also set amp_slide, amp_slide_curve, and amp_slide_shape with the following effects:"
+          slide_args = {
+            :_slide => {:default => 0, :doc=>v.generic_slide_doc('parameter')},
+            :_slide_shape => {:default=>5, :doc=>v.generic_slide_shape_doc('parameter')},
+            :_slide_curve => {:default=>0, :doc=>v.generic_slide_curve_doc('parameter')}
+          }
+
+          # table for slide parameters
+          doc << "<table cellpadding=\"8\">\n"
+          doc << "<tr><th></th><th></th></tr>\n"
+
+          cnt = 0
+          slide_args.each do |ak, av|
+            cnt += 1
+            background_colour = cnt.even? ? "#F8F8F8" : "#E8E8E8"
+            key_bg_colour = cnt.even? ? "#74ACFF" : "#B2D1FF"
+            doc << "  <tr bgcolor=\"#{background_colour}\">\n"
+            doc << "    <td bgcolor=\"#{key_bg_colour}\"><h3><pre> #{ak}:</pre></h3></td>\n"
+            doc << "      <td>\n"
+            doc << "        <font size=\"4\", #{hv_face}>\n"
+            doc << "          #{av[:doc] || 'write me'}<br/></font>\n"
+            doc << "          <em><font size=\"3\", #{hv_face}>Default: #{av[:default]}<br/>\n"
+            doc << "       </font></em>\n"
+            doc << "     </td>\n"
+            doc << " </tr>\n"
+          end
+          doc << "  </table>\n"
+        end # any_slidable
+
         res["#{safe_k}"] = doc
       end
       res
@@ -3066,7 +3938,9 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
           res << "    - doc: #{av[:doc] || 'write me'}\n"
           res << "    - default: #{av[:default]}\n"
           res << "    - constraints: #{av[:constraints].empty? ? "none" : av[:constraints].join(",")}\n"
-          res << "    - #{av[:modulatable] ? "May be changed whilst playing" : "Can not be changed once set"}\n\n"
+          res << "    - #{av[:modulatable] ? "May be changed whilst playing" : "Can not be changed once set"}\n"
+          res << "    - Scaled with current BPM value\n" if av[:bpm_scale]
+          res << "    - Has slide parameters for shaping changes\n" if av[:slidable]
         end
         res << "\n\n"
 
@@ -3126,7 +4000,7 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
         StereoPlayer.new.arg_info.each do |ak, av|
           cnt += 1
           background_colour = cnt.even? ? "#F8F8F8" : "#E8E8E8"
-          key_bg_colour = cnt.even? ? "#E6F0FF" : "#B2D1FF"
+          key_bg_colour = cnt.even? ? "#74ACFF" : "#B2D1FF"
           doc << "  <tr bgcolor=\"#{background_colour}\">\n"
           doc << "    <td bgcolor=\"#{key_bg_colour}\"><h3><pre> #{ak}:</pre></h3></td>\n"
           doc << "      <td>\n"
@@ -3134,7 +4008,8 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
           doc << "          #{av[:doc] || 'write me'}<br/></font>\n"
           doc << "          <font size=\"3\", #{hv_face}>Default: #{av[:default]}<br/>\n"
           doc << "          #{av[:constraints].join(",")}<br/>\n" unless av[:constraints].empty?
-          doc << "          #{av[:modulatable] ? "May be changed whilst playing" : "Can not be changed once set"}\n"
+          doc << "          May be changed whilst playing<br/>\n" if av[:slidable]
+          doc << "          Scaled with current BPM value\n" if av[:bpm_scale]
           doc << "       </font>\n"
           doc << "     </td>\n"
           doc << " </tr>\n"

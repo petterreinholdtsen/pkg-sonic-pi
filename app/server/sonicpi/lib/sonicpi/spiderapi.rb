@@ -12,11 +12,166 @@
 #++
 require_relative 'docsystem'
 require_relative "version"
+require_relative "util"
+
+## TODO: create _* equivalents of all fns - for silent (i.e computation) versions
 
 module SonicPi
   module SpiderAPI
 
     include SonicPi::DocSystem
+    include SonicPi::Util
+
+    def inc(n)
+      n + 1
+    end
+    doc name:          :inc,
+        introduced:    Version.new(2, 1, 0),
+        summary:       "Increment",
+        args:          [[:n, :number]],
+        opts:          {},
+        accepts_block: false,
+        doc:           "Increment a number by 1. Equivalent to n + 1",
+        examples:     [
+      "inc 1 # returns 2",
+      "inc -1 # returns 0"]
+
+
+    def dec(n)
+      n - 1
+    end
+    doc name:          :dec,
+        introduced:    Version.new(2, 1, 0),
+        summary:       "Decrement",
+        args:          [[:n, :number]],
+        opts:          {},
+        accepts_block: false,
+        doc:           "Decrement a number by 1. Equivalent to n - 1",
+        examples:     [
+      "dec 1 # returns 0",
+      "dec -1 # returns -2"]
+
+
+    def live_loop(name, *args, &block)
+      raise "live_loop must be called with a code block" unless block
+
+      args_h = resolve_synth_opts_hash_or_array(args)
+      if args_h.has_key? :auto_cue
+        auto_cue = args_h[:auto_cue]
+      else
+        auto_cue = true
+      end
+
+      case block.arity
+      when 0
+        define(name) do |a|
+          block.call
+        end
+      when 1
+        define(name) do |a|
+          block.call(a)
+        end
+      else
+        raise "Live loop block must only accept 0 or 1 args"
+      end
+
+      in_thread(name: name) do
+        Thread.current.thread_variable_set :sonic_pi__not_inherited__live_loop_auto_cue, auto_cue
+        if args_h.has_key?(:init)
+          res = args_h[:init]
+        else
+          res = 0
+        end
+        loop do
+          t1 = Thread.current.thread_variable_get(:sonic_pi_spider_time)
+          Thread.current.thread_variable_set(:sonic_pi_spider_synced, false)
+          cue name if Thread.current.thread_variable_get :sonic_pi__not_inherited__live_loop_auto_cue
+          res = send(name, res)
+
+          t2 = Thread.current.thread_variable_get(:sonic_pi_spider_time)
+          raise "Live loop #{name.to_sym} did not sleep!" if (t1 == t2) && !Thread.current.thread_variable_get(:sonic_pi_spider_synced)
+        end
+      end
+
+      st = sthread(name)
+      st.thread_variable_set :sonic_pi__not_inherited__live_loop_auto_cue, auto_cue if st
+      st
+    end
+    doc name:           :live_loop,
+        introduced:     Version.new(2,1,0),
+        summary:        "A loop for live coding",
+        args:           [[:name, :symbol]],
+        opts:           {:init => "initial value for optional block arg",
+                         :auto_cue => "enable or disable automatic cue (default is true)"},
+        accepts_block: true,
+        doc: "Run the block in a new thread with the given name, and loop it forever.  Also sends a cue with the same name each time the block runs. If the block is giving a parameter, this is given the result of the last run of the loop (with initial value either being 0 or an init arg).",
+        examples: ["
+live_loop :ping do
+  sample :elec_ping
+  sleep 1
+end
+",
+
+"
+live_loop :foo do |a|  # pass a param (a) to the block (inits to 0)
+  puts a               # prints out all the integers
+  sleep 1
+  a += 1               # increment a by 1 (last value is passed back into the loop)
+end
+"   ]
+
+
+    def at(times, params=nil, &block)
+      raise "after must be called with a code block" unless block
+      params ||= []
+      raise "params needs to be a list-like thing" unless params.respond_to? :[]
+
+      params_size = params.size
+      times = [times] if times.is_a? Numeric
+      raise "times needs to be a list-like thing" unless times.respond_to? :each_with_index
+      times.each_with_index do |t, idx|
+        in_thread do
+          sleep t
+          case block.arity
+          when 0
+            block.call
+          when 1
+            if params_size == 0
+              block.call(nil)
+            else
+              p = params[idx % params_size]
+              block.call(p)
+            end
+          else
+            raise "block for after should only accept 0 or 1 parameters. You gave: #{block.arity}."
+          end
+        end
+      end
+    end
+    doc name:           :at,
+        introduced:     Version.new(2,1,0),
+        summary:        "Run a block at the given times",
+        doc:            "Given a list of times, run the block once after waiting each given time. If passed an optional params list, will pass each param individually to each block call. If params is smaller than args, the values will rotate through.",
+        args:           [[:times, :list],
+                         [:params, :list]],
+        opts:           {:params=>nil},
+        accepts_block:  true,
+        examples:       ["
+at [1, 2, 4] do  # plays a note after waiting 1 second,
+  play 75           # then after 1 more second,
+end                 # then after 2 more seconds (4 seconds total)
+",
+"
+at [1, 2, 3], [75, 76, 77] do |n|  # plays 3 different notes
+  play n
+end
+",
+"
+at [1, 2, 3],
+    [{:amp=>0.5}, {:amp=> 0.8}] do |p| # alternate soft and loud
+  sample :drum_cymbal_open, p          # cymbal hits three times
+end
+"]
 
     def version
       @version
@@ -108,11 +263,27 @@ end
 play bar # plays 80"]
 
 
-
+    def ndefine(name, &block)
+      # do nothing!
+    end
+    doc name:           :ndefine,
+        introduced:     Version.new(2,1,0),
+        summary:        "Define a new function",
+        args:           [[:name, :symbol]],
+        opts:          nil,
+        accepts_block: true,
+        doc:           "Does nothing. Use to stop a define from actually defining. Simpler than wrapping whole define in a comment block or commenting each individual line out.",
+        examples: []
 
     def define(name, &block)
       raise "define must be called with a code block" unless block
-      if @user_methods.method_defined? name
+      already_defined = @user_methods.method_defined? name
+
+      if !already_defined && self.respond_to?(name)
+        raise "A function called #{name} is already part of Sonic Pi's core API. Please choose another name."
+      end
+
+      if already_defined
         __info "Redefining #{name}"
       else
         __info "Defining #{name}"
@@ -234,6 +405,68 @@ end"]
 
 
 
+    def vt
+      __current_local_run_time
+    end
+    doc name:           :vt,
+        introduced:     Version.new(2,1,0),
+        summary:        "Get virtual time",
+        args:           [],
+        opts:           nil,
+        accepts_block:  false,
+        doc:           "Get the virtual time of the current thread.",
+        examples:      [
+"puts vt # prints 0
+ sleep 1
+ puts vt # prints 1"]
+
+    def factor?(val, factor)
+      (val % factor) == 0
+    end
+    doc name:           :factor?,
+        introduced:     Version.new(2,1,0),
+        summary:        "Factor test",
+        args:           [[:val, :number], [:factor, :number]],
+        opts:           nil,
+        accepts_block:  false,
+        doc:            "Test to see if factor is indeed a factor of val. In other words, can val be divided exactly by factor.",
+        examples:       [
+"
+factor?(10, 2) # true - 10 is a multiple of 2 (2 * 5 = 10)
+",
+"
+factor?(11, 2) #false - 11 is not a multiple of 2
+",
+"
+factor?(2, 0.5) #true - 2 is not a multiple of 0.5 (0.5 * 4 = 2) "
+]
+
+    def quantise(n, resolution)
+      raise "quantisation resolution should be positive" if resolution <= 0
+      (n.to_f / resolution).round * resolution
+    end
+    doc name:           :quantise,
+        introduced:     Version.new(2,1,0),
+        summary:        "Quantise a value to resolution",
+        args:           [[:n, :number], [:resolution, :positive_number]],
+        opts:           nil,
+        accepts_block:  false,
+        doc:            "Round value to the nearest multiple of resolution.",
+        examples:        [
+"
+quantise(10, 1) # 10 is already a multiple of 1, so returns 10" ,
+"
+quantise(10, 1.1) # Returns 9.9 which is 1.1 * 9",
+"
+quantise(13.3212, 0.1) # 13.3",
+"
+quantise(13.3212, 0.2) # 13.4",
+"
+quantise(13.3212, 0.3) # 13.2",
+"
+quantise(13.3212, 0.5) # 13.5"]
+
+
     def dice(num_sides=6)
       rrand_i(1, num_sides)
     end
@@ -274,20 +507,35 @@ one_in 100 # will return true with a probability of 1/100, false with a probabil
 
 
 
-    def rrand(min, max)
+    def rrand(min, max, *opts)
+      args_h = resolve_synth_opts_hash_or_array(opts)
+      res = args_h[:res]
+      if min == max
+        if res
+          return quantise(min, res)
+        else
+          return min
+        end
+      end
+
       range = (min - max).abs
       rgen = Thread.current.thread_variable_get :sonic_pi_spider_random_generator
       r = rgen.rand(range.to_f)
       smallest = [min, max].min
-      r + smallest
+
+      if res
+        return quantise((r + smallest), res)
+      else
+        r + smallest
+      end
     end
     doc name:           :rrand,
         introduced:     Version.new(2,0,0),
         summary:        "Generate a random float between two numbers",
         args:           [[:min, :number], [:max, :number]],
-        opts:           nil,
+        opts:           {:res => nil},
         accepts_block:  false,
-        doc:            "Given two numbers, this produces a float between the supplied min and max values exclusively. Both min and max need to be supplied. For random integers, see rrand_i",
+        doc:            "Given two numbers, this produces a float between the supplied min and max values exclusively. Both min and max need to be supplied. For random integers, see rrand_i. If optional arg :res is used, the result is quantised by res.",
         examples:      [
 "
 print rrand(0, 10) #=> will print a number like 8.917730007820797 to the output pane",
@@ -301,11 +549,12 @@ end"]
 
 
     def rrand_i(min, max)
+      return min if min == max
       range = (min - max).abs
       rgen = Thread.current.thread_variable_get :sonic_pi_spider_random_generator
       r = rgen.rand(range.to_i + 1)
       smallest = [min, max].min
-      (r + smallest).to_f
+      (r + smallest)
     end
     doc name:           :rrand_i,
         introduced:     Version.new(2,0,0),
@@ -316,7 +565,7 @@ end"]
         doc:            "Given two numbers, this produces a whole number between the min and max you supplied inclusively. Both min and max need to be supplied. For random floats, see rrand",
         examples:      [
 "
-print rrand_i(0, 10) #=> will print a random number between 0 and 10 (e.g. 4.0, 0.0 or 10.0) to the output pane",
+print rrand_i(0, 10) #=> will print a random number between 0 and 10 (e.g. 4, 0 or 10) to the output pane",
 "
 loop do
   play rrand_i(60, 72) #=> Will play a random midi note between C4 (60) and C5 (72)
@@ -327,16 +576,18 @@ end"]
 
 
     def rand(max=1)
+      max = 0..1 if max == 0
       rgen = Thread.current.thread_variable_get :sonic_pi_spider_random_generator
-      rgen.rand(max.to_f)
+      limit = max.is_a?(Range) ? Range.new(*[max.min, max.max].map(&:to_f)) : max.to_f
+      rgen.rand(limit)
     end
     doc name:           :rand,
         introduced:     Version.new(2,0,0),
         summary:        "Generate a random float below a value",
-        args:           [[:max, :number]],
+        args:           [[:max, :number_or_range]],
         opts:           nil,
         accepts_block:  false,
-        doc:            "Given a max number, produces a float between 0 and the supplied max value. With no args, returns a random value between 0 and 1.",
+        doc:            "Given a max number, produces a float between 0 and the supplied max value. If max is a range, produces a float within the range. With no args or max as 0, returns a random value between 0 and 1.",
         examples:      [
 "
 print rand(0.5) #=> will print a number like 0.397730007820797 to the output pane"]
@@ -345,22 +596,40 @@ print rand(0.5) #=> will print a number like 0.397730007820797 to the output pan
 
 
     def rand_i(max=2)
+      max = 0..1 if max == 0
       rgen = Thread.current.thread_variable_get :sonic_pi_spider_random_generator
-      rgen.rand(max.to_i).to_f
+      limit = max.is_a?(Range) ? Range.new(*[max.min, max.max].map(&:to_i)) : max.to_i
+      rgen.rand(limit)
     end
     doc name:           :rand_i,
         introduced:     Version.new(2,0,0),
-        summary:        "Generate a random whole number float below a value",
-        args:           [[:max, :number]],
+        summary:        "Generate a random whole number below a value (exclusive)",
+        args:           [[:max, :number_or_range]],
         opts:           nil,
         accepts_block:  false,
-        doc:            "Given a max number, produces a whole numberfloat between 0 and the supplied max value. With no args returns either 0.0 or 1.0",
+        doc:            "Given a max number, produces a whole number between 0 and the supplied max value exclusively. If max is a range produces a int within the range. With no args or max as 0 returns either 0 or 1",
         examples:      [
 "
-print rand_i(10) #=> will print a number like 7.0 to the output pane"]
+print rand_i(5) #=> will print a either 0, 1, 2, 3, or 4 to the output pane"]
 
 
 
+    def shuffle(list)
+      return list.shuffle if list.respond_to? :shuffle
+      list.to_a.shuffle
+    end
+    doc name:           :shuffle,
+        introduced:     Version.new(2,1,0),
+        summary:        "Randomise order of a list",
+        args:           [[:list, :array]],
+        opts:           nil,
+        accepts_block:  false,
+        doc:            "Returns a new list with the same elements as the original but with their order shuffled. Also works for strings",
+        examples:       [
+"
+shuffle [1, 2, 3, 4] #=> Would return something like: [3, 4, 2, 1] ",
+"
+shuffle \"foobar\"  #=> Would return something like: \"roobfa\""    ]
 
     def choose(list)
       list.to_a.choose
@@ -558,10 +827,15 @@ play 72"]
 
 
     def sleep(seconds)
+      return if seconds == 0
       # Grab the current virtual time
       last_vt = Thread.current.thread_variable_get :sonic_pi_spider_time
+
+      # Schedule messages
       __schedule_delayed_blocks_and_messages!
-      # now get on with syncing the rest of the sleep time
+
+      # Now get on with syncing the rest of the sleep time...
+
       # Calculate the amount of time to sleep (take into account current bpm setting)
       sleep_time = seconds * Thread.current.thread_variable_get(:sonic_pi_spider_sleep_mul)
       # Calculate the new virtual time
@@ -573,13 +847,28 @@ play 72"]
       if now - (sat + 0.5) > new_vt
         raise "Timing Exception: thread got too far behind time"
       elsif (now - sat) > new_vt
+        # TODO: Empirical tests to see what effect this priority stuff
+        # actually has on typical workloads
+
         # Hard warning, system is too far behind, expect timing issues.
-        Thread.current.priority = 20
+        p = Thread.current.priority
+        p += 10
+        p = 100 if p < 100
+        p = 150 if p > 150
+        Thread.current.priority = p
         __delayed_serious_warning "Timing error: can't keep up..."
       elsif now > new_vt
         # Soft warning, system should work correctly, but is currently behind
-        Thread.current.priority = 20
-        __delayed_warning "Timing warning: running slightly behind..."
+        p = Thread.current.priority
+        p += 5
+        p = 50 if p < 50
+        p = 150 if p > 150
+        Thread.current.priority = p
+        ## TODO: Remove this and replace with a much better silencing system which
+        ## is implemented within the __delayed_* fns
+        unless Thread.current.thread_variable_get(:sonic_pi_mod_sound_synth_silent)
+          __delayed_warning "Timing warning: running slightly behind..."
+        end
       else
         Kernel.sleep new_vt - now
       end
@@ -632,7 +921,11 @@ play 62
 
 
     def wait(time)
-      sleep(time)
+      if time.is_a? Symbol
+        sync(time)
+      else
+        sleep(time)
+      end
     end
     doc name:           :wait,
         introduced:     Version.new(2,0,0),
@@ -646,15 +939,33 @@ play 62
 
 
 
-    def cue(cue_id)
-      __no_kill_block do
-        Kernel.sleep @sync_real_sleep_time
-payload = {
-          :time => Thread.current.thread_variable_get(:sonic_pi_spider_time),
-          :run => current_job_id
-         }
+    def cue(cue_id, *opts)
+      args_h = resolve_synth_opts_hash_or_array(opts)
+      args_h.each do |k, v|
+        raise "Invalid cue key type. Must be a Symbol" unless k.is_a? Symbol
+        raise "Invalid cue value type (#{v.class}) for key #{k.inspect}. Must be immutable - currently accepted types: Numeric and Symbol." unless v.is_a?(Numeric) || v.is_a?(Symbol)
+      end
+
+
+      payload = {
+        :time => Thread.current.thread_variable_get(:sonic_pi_spider_time),
+        :run => current_job_id,
+        :cue_map => args_h
+      }
+
+      if args_h.empty?
         __delayed_highlight_message "cue #{cue_id.to_sym.inspect}"
-        @events.event("/spider_thread_sync/" + cue_id.to_s, payload)
+      else
+        __delayed_highlight_message "cue #{cue_id.to_sym.inspect}, #{arg_h_pp(args_h)}"
+      end
+
+      Thread.new do
+        Thread.current.thread_variable_set(:sonic_pi_thread_group, :cue)
+        # sleep for a tiny amount of wall-clock time to give other temporally
+        # synced threads real time to register syncs at similar virtual
+        # times.
+        Kernel.sleep @sync_real_sleep_time
+        @events.async_event("/spider_thread_sync/" + cue_id.to_s, payload)
       end
     end
     doc name:           :cue,
@@ -725,18 +1036,27 @@ end"
 
 
     def sync(cue_id)
-      __delayed_highlight3_message "sync #{cue_id.to_sym.inspect}"
-      __schedule_delayed_blocks_and_messages!
+      Thread.current.thread_variable_set(:sonic_pi_spider_synced, true)
       p = Promise.new
       @events.oneshot_handler("/spider_thread_sync/" + cue_id.to_s) do |payload|
         p.deliver! payload
       end
+
+      unless Thread.current.thread_variable_get(:sonic_pi_mod_sound_synth_silent)
+        __delayed_highlight3_message "sync #{cue_id.to_sym.inspect}"
+      end
+
+      __schedule_delayed_blocks_and_messages!
+
       payload = p.get
       time = payload[:time]
       run_id = payload[:run]
+      cue_map = payload[:cue_map]
       Thread.current.thread_variable_set :sonic_pi_spider_time, time
-      __delayed_highlight2_message "synced #{cue_id.to_sym.inspect} (Run #{run_id})"
-      cue_id
+      unless Thread.current.thread_variable_get(:sonic_pi_mod_sound_synth_silent)
+        __delayed_highlight2_message "synced #{cue_id.to_sym.inspect} (Run #{run_id})"
+      end
+      cue_map.dup if cue_map
     end
     doc name:           :sync,
         introduced:     Version.new(2,0,0),
@@ -819,8 +1139,14 @@ end"]
 
       job_id = __current_job_id
       reg_with_parent_completed = Promise.new
+
+      # Don't use the current generator to gen the new seed as this gen
+      # might possibly want be passed through to the block untouched
+      # (which is indeed the case with the current with_fx
+      # implementation)
       rgen = Thread.current.thread_variable_get :sonic_pi_spider_random_generator
-      new_rand_seed = rgen.rand(999999999999999999999999999999999999999)
+      cur_seed = rgen.seed
+      new_rand_seed = args_h[:seed] || Random.new(cur_seed).rand(999999999999999999999999999999999999999)
 
       # Create the new thread
       t = Thread.new do
@@ -859,7 +1185,10 @@ end"]
         # Give new thread a new subthread mutex
         Thread.current.thread_variable_set :sonic_pi_spider_subthread_mutex, Mutex.new
 
-        # Give new thread a new no_kill mutex
+        # Give new thread a new no_kill mutex This reduces contention
+        # over the alternative of a global no_kill mutex.  Killing a Run
+        # then essentially turns into waiting for each no_kill mutext for
+        # every sub-in_thread before killing them.
         Thread.current.thread_variable_set :sonic_pi_spider_no_kill_mutex, Mutex.new
         Thread.current.thread_variable_set :sonic_pi_spider_random_generator, Random.new(new_rand_seed)
 

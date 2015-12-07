@@ -17,7 +17,10 @@
         <file>images/size_up.png</file>
         <file>images/splash@2x.png</file>
         <file>images/splash.png</file>
+        <file>images/icon.png</file>
+        <file>images/icon-smaller.png</file>
         <file>images/logo.png</file>
+        <file>images/logo-smaller.png</file>
         <file>images/tutorial/sample.png</file>
         <file>images/tutorial/env-attack-release.png</file>
         <file>images/tutorial/env-attack-decay-sustain-release.png</file>
@@ -25,5 +28,11 @@
         <file>images/tutorial/env-long-attack-short-release.png</file>
         <file>images/tutorial/env-release.png</file>
         <file>images/tutorial/env-short-attack-short-release.png</file>
+        <file>images/tutorial/GUI.png</file>
+
+        <file>images/coreteam/samaaron.png</file>
+        <file>images/coreteam/josephwilk.png</file>
+        <file>images/coreteam/xavierriley.png</file>
+	<file>images/coreteam/jweather.png</file>
     </qresource>
 </RCC>

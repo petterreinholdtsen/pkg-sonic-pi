@@ -12,6 +12,7 @@
 #++
 
 require 'cgi'
+require_relative 'util'
 
 module SonicPi
   module DocSystem
@@ -39,16 +40,15 @@ module SonicPi
               m = l.match /(.*?)[^&]?(#.*)/
               if m
 
-                code << m[1] << "\n"
-                comments << m[2] << "\n"
+                code << CGI.escapeHTML(m[1]) << "\n"
+                comments << CGI.escapeHTML(m[2]) << "\n"
               else
-                code << l
+                code << CGI.escapeHTML(l)
                 comments << " \n"
               end
             end
             [code, comments]
           end
-
           @@docs.each do |k, v|
             unless(v[:hide])
               html = ""
@@ -56,6 +56,7 @@ module SonicPi
               html << "<font #{hv_face}>" << (v[:summary] || v[:name]).to_s.capitalize << "</font></span></p>\n"
               html << "<h1><font color=\"#3c3c3c\"><pre>#{v[:name]}<pre></font></h1>\n"
               req_args = []
+              raise "no args defined for #{v[:name]}" unless v[:args]
               v[:args].each do |arg|
                 n, t = *arg
                 req_args << "#{n} <font color=\"deeppink\">(#{t})</font>"
@@ -65,7 +66,7 @@ module SonicPi
               html << v[:doc] << "\n</p>\n"
               html << "<p><font size=\"3\", #{hv_face}>\n"
               html << "<span style=\"color:white;background-color:darkorange;\">"
-              html << "Introduced in v" << v[:introduced].to_s << "\n</span></p>\n"
+              html << "Introduced in " << v[:introduced].to_s << "\n</span></p>\n"
 
               html << "<table cellpadding=\"8\">\n"
               html << " <tr>\n   <th></th><th></th><th></th>\n </tr>\n"
@@ -73,12 +74,13 @@ module SonicPi
               v[:examples].each_with_index do |e, idx|
 
                 background_colour = idx.even? ? "#F8F8F8" : "#E8E8E8"
-                key_bg_colour = idx.even? ? "#E6F0FF" : "#B2D1FF"
+                key_bg_colour = idx.even? ? "#74ACFF" : "#B2D1FF"
 
                 html << " <tr bgcolor=\"#{background_colour}\">\n"
                 html << "  <td bgcolor=\"#{key_bg_colour}\"><h3><pre>Example #{idx} </pre></h3></td>\n"
-                lines = "\n" << e.strip.split("\n").map{|l| CGI.escapeHTML(l)}.join("\n")
-                code, comments = *extract_comments.call(lines)
+
+                code, comments = *extract_comments.call(e.strip)
+
                 html << "   <td><pre>\n#{code << "\n\n\n"}</pre></td>\n"
                 html << "   <td><pre>\n#{comments << "\n\n\n"}</pre></td></tr>\n"
               end
