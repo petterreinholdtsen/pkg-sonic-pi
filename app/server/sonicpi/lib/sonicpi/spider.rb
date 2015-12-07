@@ -3,11 +3,11 @@
 # Full project source: https://github.com/samaaron/sonic-pi
 # License: https://github.com/samaaron/sonic-pi/blob/master/LICENSE.md
 #
-# Copyright 2013, 2014 by Sam Aaron (http://sam.aaron.name).
+# Copyright 2013, 2014, 2015 by Sam Aaron (http://sam.aaron.name).
 # All rights reserved.
 #
-# Permission is granted for use, copying, modification, distribution,
-# and distribution of modified versions of this work as long as this
+# Permission is granted for use, copying, modification, and
+# distribution of modified versions of this work as long as this
 # notice is included.
 #++
 require_relative "util"
@@ -29,6 +29,7 @@ require_relative "sthread"
 require_relative "oscval"
 require_relative "version"
 require_relative "settings"
+require_relative "preparser"
 #require_relative "oscevent"
 #require_relative "stream"
 
@@ -48,11 +49,11 @@ module SonicPi
 
     def initialize(hostname, port, msg_queue, max_concurrent_synths, user_methods)
       @settings = Settings.new
-      @version = Version.new(2, 4, 0)
+      @version = Version.new(2, 5, 0)
       @server_version = __server_version
       @life_hooks = LifeCycleHooks.new
       @msg_queue = msg_queue
-      @event_queue = Queue.new
+      @event_queue = SizedQueue.new(20)
       @keypress_handlers = {}
       @events = IncomingEvents.new
       @sync_counter = Counter.new
@@ -184,52 +185,9 @@ module SonicPi
       __enqueue_multi_message(2, s)
     end
 
-    def __schedule_delayed_blocks
-      delayed_blocks = Thread.current.thread_variable_get :sonic_pi_spider_delayed_blocks
-      unless(delayed_blocks.empty?)
-        last_vt = Thread.current.thread_variable_get :sonic_pi_spider_time
-        parent_t = Thread.current
-        parent_t_vars = {}
-        parent_t.thread_variables.each do |v|
-          parent_t_vars[v] = parent_t.thread_variable_get(v)
-        end
-        p = Promise.new
-
-        pause_then_run_blocks_and_msgs = lambda do
-          # Give new thread a new subthread mutex
-          Thread.current.thread_variable_set :sonic_pi_spider_subthread_mutex, Mutex.new
-          Thread.current.thread_variable_set :sonic_pi_spider_no_kill_mutex, Mutex.new
-          parent_t_vars.each do |k,v|
-            Thread.current.thread_variable_set(k, v)
-          end
-          Thread.current.thread_variable_set(:sonic_pi_thread_group, :execute_delayed_blocks)
-          p.get
-          # Calculate the amount of time to sleep to sync us up with the
-          # sched_ahead_time
-          sched_ahead_sync_t = last_vt + @mod_sound_studio.sched_ahead_time
-          sleep_time = sched_ahead_sync_t - Time.now
-          Kernel.sleep(sleep_time) if sleep_time > 0
-          #We're now in sync with the sched_ahead time
-
-          delayed_blocks.each {|b| b.call}
-          job_subthread_rm(__current_job_id, t)
-        end
-
-        @job_subthread_mutex.synchronize do
-          t = Thread.new do
-            Thread.current.thread_variable_set(:sonic_pi_thread_group, :scsynth_external_booter)
-            pause_then_run_blocks_and_msgs.call
-          end
-          job_subthread_add_unmutexed(__current_job_id, t)
-        end
-        p.deliver! true
-
-        Thread.current.thread_variable_set :sonic_pi_spider_delayed_blocks, []
-      end
-    end
-
-    def __schedule_messages
+    def __schedule_delayed_blocks_and_messages!
       delayed_messages = Thread.current.thread_variable_get :sonic_pi_spider_delayed_messages
+      delayed_blocks = Thread.current.thread_variable_get(:sonic_pi_spider_delayed_blocks) || []
       unless(delayed_messages.empty?)
         last_vt = Thread.current.thread_variable_get :sonic_pi_spider_time
         parent_t = Thread.current
@@ -248,13 +206,22 @@ module SonicPi
           Thread.current.thread_variable_set :sonic_pi_spider_subthread_mutex, Mutex.new
           Thread.current.thread_variable_set :sonic_pi_spider_no_kill_mutex, Mutex.new
 
-
+          Thread.current.thread_variable_set(:sonic_pi_core_thread_local_counters, {})
           # Calculate the amount of time to sleep to sync us up with the
           # sched_ahead_time
           sched_ahead_sync_t = last_vt + @mod_sound_studio.sched_ahead_time
           sleep_time = sched_ahead_sync_t - Time.now
           Kernel.sleep(sleep_time) if sleep_time > 0
           #We're now in sync with the sched_ahead time
+
+          delayed_blocks.each do |b|
+            begin
+              b.call
+            rescue => e
+              log e.backtrace
+            end
+          end
+
           __multi_message(delayed_messages)
           job_subthread_rm(job_id, Thread.current)
         end
@@ -263,11 +230,6 @@ module SonicPi
 
         Thread.current.thread_variable_set :sonic_pi_spider_delayed_messages, []
       end
-    end
-
-    def __schedule_delayed_blocks_and_messages!
-      __schedule_delayed_blocks
-      __schedule_messages
     end
 
     def __enqueue_multi_message(m_type, m)
@@ -356,7 +318,7 @@ module SonicPi
       id = id.to_s
       raise "Aborting load: file name is blank" if  id.empty?
       path = project_path + id + '.spi'
-      s = "# Welcome to Sonic Pi #{@version.to_s}"
+      s = "# Welcome to Sonic Pi #{@version.to_s}\n\n"
       if File.exists? path
         s = IO.read(path)
       end
@@ -366,13 +328,112 @@ module SonicPi
     def __replace_buffer(id, content)
       id = id.to_s
       content = content.to_s
-      @msg_queue.push({type: "replace-buffer", buffer_id: id, val: content})
+      @msg_queue.push({type: "replace-buffer", buffer_id: id, val: content, line: 0, index: 0, first_line: 0})
     end
 
-    def __beautify_buffer(id, buf)
+    def __indent_lines(workspace_id, buf, start_line, finish_line, point_line, point_index)
+      id = workspace_id.to_s
+      buf = buf + "\n"
+      buf_lines = buf.lines.to_a
+
+      if (start_line <= point_line) && (point_line <= finish_line)
+        manipulate_point = true
+        # Calculate amount of whitespace at start of original line
+        orig_point_line = buf_lines[point_line]
+        orig_point_line_ws_len = orig_point_line[/\A */].size
+
+        if buf_lines[point_line] =~ /^\s*$/
+          #line is just whitespace, put in a dummy line so it gets autoindented
+          buf_lines[point_line] = "#dummy"
+          dummy_line = true
+        else
+          dummy_line = false
+        end
+      else
+        manipulate_point = false
+      end
+
+      # Beautify buffer
+      beautiful = RBeautify.beautify_string :ruby, buf_lines.join
+
+      # calculate amount of whitespace at start of beautified line
+      beautiful_lines = beautiful.lines.to_a
+
+      if manipulate_point
+        if dummy_line
+          # remove dummy line and extract leading whitespace
+          indented_dummy = beautiful_lines[point_line]
+          indented_dummy_whitespace = indented_dummy.match(/\A(\s*)/)[1]
+          beautiful_lines[point_line] = indented_dummy_whitespace + "\n"
+          point_index = indented_dummy_whitespace.size
+        else
+          new_point_line = beautiful_lines[point_line]
+          new_point_line_ws_len = new_point_line[/\A */].size
+
+          # shift index based on how much the line was indented so the
+          # cursor stays in the same place relative to the original line
+          # whilst ensuring it stays within line bounds
+          point_index = point_index + (new_point_line_ws_len - orig_point_line_ws_len)
+          point_index = new_point_line.size - 1 if point_index > new_point_line.size
+          point_index = orig_point_line_ws_len if point_index < orig_point_line_ws_len
+        end
+      end
+
+      indented_lines = beautiful_lines[start_line..finish_line].join
+
+      @msg_queue.push({type: "replace-lines", buffer_id: id, val: indented_lines, start_line: start_line, finish_line: finish_line, point_line: point_line, point_index: point_index})
+
+    end
+
+    def __beautify_buffer(id, buf, line, index, first_line)
       id = id.to_s
+      buf = buf + "\n"
+      buf_lines = buf.lines.to_a
+
+      ## ensure point isn't beyond buffer
+      max_buf_idx = buf_lines.size - 1
+      line  = max_buf_idx if line > max_buf_idx
+
+
+      # Calculate amount of whitespace at start of original line
+      prev_line = buf_lines[line]
+      prev_ws_len = prev_line[/\A */].size
+
+      # Beautify buffer
       beautiful = RBeautify.beautify_string :ruby, buf
-      @msg_queue.push({type: "replace-buffer", buffer_id: id, val: beautiful})
+
+      # calculate amount of whitespace at start of beautified line
+      beautiful_lines = beautiful.lines.to_a
+      beautiful_len = beautiful_lines.size
+      post_line = beautiful_lines[line]
+      post_ws_len = post_line[/\A */].size
+
+      # shift index based on how much the line was indented so the
+      # cursor stays in the same place relative to the original line
+      # whilst ensuring it stays within line bounds
+      index = index + (post_ws_len - prev_ws_len)
+      index = post_line.size - 1 if index > post_line.size
+
+      # Strip whitespace at the beginning of the buffer
+      beautiful.lstrip!
+
+      # adjust line number based on how many lines were removed as a
+      # result of the whitespace stripping
+      post_lstrip_len = beautiful.lines.to_a.size
+      line = line - (beautiful_len - post_lstrip_len)
+      line = 0 if line < 0
+
+      # Strip whitespace from the end of the buffer
+      beautiful.rstrip!
+      post_rstrip_len = beautiful.lines.to_a.size
+
+      # move point to end of buffer if whitespace stripping at end of
+      # buffer put point out of bounds
+      if line >= post_rstrip_len
+        line = post_rstrip_len
+        index = beautiful.lines.to_a.last.size
+      end
+      @msg_queue.push({type: "replace-buffer", buffer_id: id, val: beautiful, line: line, index: index, first_line: first_line})
     end
 
     def __save_buffer(id, content)
@@ -398,9 +459,11 @@ module SonicPi
       firstline = 1
       firstline -= code.split(/\r?\n/).count{|l| l.include? "#__nosave__"}
       start_t_prom = Promise.new
+
       job = Thread.new do
         Thread.current.priority = 20
         begin
+
           num_running_jobs = reg_job(id, Thread.current)
           Thread.current.thread_variable_set :sonic_pi_thread_group, "job-#{id}"
           Thread.current.thread_variable_set :sonic_pi_spider_arg_bpm_scaling, true
@@ -423,6 +486,7 @@ module SonicPi
           Thread.current.thread_variable_set :sonic_pi_spider_start_time, now
           @run_start_time = now if num_running_jobs == 1
           __info "Starting run #{id}"
+          code = PreParser.preparse(code)
           eval(code, nil, info[:workspace] || 'eval', firstline)
           __schedule_delayed_blocks_and_messages!
         rescue Exception => e
@@ -447,7 +511,6 @@ module SonicPi
         @life_hooks.completed(id)
         start_t = start_t_prom.get
         @life_hooks.exit(id, {:start_t => start_t})
-
         deregister_job_and_return_subthreads(id)
         @user_jobs.job_completed(id)
         Kernel.sleep @mod_sound_studio.sched_ahead_time

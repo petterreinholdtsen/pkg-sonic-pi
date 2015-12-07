@@ -3,11 +3,11 @@
 # Full project source: https://github.com/samaaron/sonic-pi
 # License: https://github.com/samaaron/sonic-pi/blob/master/LICENSE.md
 #
-# Copyright 2013, 2014 by Sam Aaron (http://sam.aaron.name).
+# Copyright 2013, 2014, 2015 by Sam Aaron (http://sam.aaron.name).
 # All rights reserved.
 #
-# Permission is granted for use, copying, modification, distribution,
-# and distribution of modified versions of this work as long as this
+# Permission is granted for use, copying, modification, and
+# distribution of modified versions of this work as long as this
 # notice is included.
 #++
 require_relative "version"
@@ -55,6 +55,10 @@ module SonicPi
 
     def introduced
       raise "please implement introduced version for synth info: #{self.class}"
+    end
+
+    def trigger_with_logical_clock?
+      raise "please implement trigger_with_logical_clock? for synth info: #{self.class}"
     end
 
     def args
@@ -221,7 +225,7 @@ module SonicPi
 
         :note =>
         {
-          :doc => "Note to play. Either a MIDI number or a symbol representing a note. For example: 30, 52, :C, :C2, :Eb4, or :Ds3",
+          :doc => "Note to play. Either a MIDI number or a symbol representing a note. For example: `30, 52, :C, :C2, :Eb4`, or `:Ds3`",
           :validations => [v_positive(:note)],
           :modulatable => true
         },
@@ -842,7 +846,7 @@ module SonicPi
     end
 
     def doc
-      "The FM synth modulating between two notes - the duration of the modulation can be modified using the mod_phase arg, the range (number of notes jumped between) by the mod_range arg and the width of the jumps by the mod_width param. The FM synth is sine wave with a fundamental frequency which is modulated at audio rate by another sine wave with a specific modulation division and depth. Useful for generated a wide range of sounds by playing with the divisor and depth params. Great for deep powerful bass and crazy 70s sci-fi sounds."
+      "The FM synth modulating between two notes - the duration of the modulation can be modified using the mod_phase arg, the range (number of notes jumped between) by the mod_range arg and the width of the jumps by the mod_width param. The FM synth is sine wave with a fundamental frequency which is modulated at audio rate by another sine wave with a specific modulation division and depth. Useful for generated a wide range of sounds by playing with the `:divisor` and `:depth` params. Great for deep powerful bass and crazy 70s sci-fi sounds."
     end
 
     def arg_defaults
@@ -851,7 +855,7 @@ module SonicPi
                     :mod_range => 5,
                     :mod_pulse_width => 0.5,
                     :mod_phase_offset => 0,
-                    :mod_invert_wave => 0,
+                    :mod_invert_wave => 1,
                     :mod_wave => 1
                   })
     end
@@ -916,7 +920,7 @@ module SonicPi
         :mod_pulse_width_slide_shape => 5,
         :mod_pulse_width_slide_curve => 0,
         :mod_phase_offset => 0,
-        :mod_invert_wave => 0,
+        :mod_invert_wave => 1,
         :mod_wave => 1
 
       }
@@ -981,7 +985,7 @@ module SonicPi
         :mod_pulse_width_slide_shape => 5,
         :mod_pulse_width_slide_curve => 0,
         :mod_phase_offset => 0,
-        :mod_invert_wave => 0,
+        :mod_invert_wave => 1,
         :mod_wave => 1,
         :detune => 0.1,
         :detune_slide => 0,
@@ -1049,7 +1053,7 @@ module SonicPi
         :mod_pulse_width_slide_shape => 5,
         :mod_pulse_width_slide_curve => 0,
         :mod_phase_offset => 0,
-        :mod_invert_wave => 0,
+        :mod_invert_wave => 1,
         :mod_wave => 1
 
       }
@@ -1113,7 +1117,7 @@ module SonicPi
         :mod_pulse_width_slide_shape => 5,
         :mod_pulse_width_slide_curve => 0,
         :mod_phase_offset => 0,
-        :mod_invert_wave => 0,
+        :mod_invert_wave => 1,
         :mod_wave => 1
       }
     end
@@ -1177,7 +1181,7 @@ module SonicPi
         :mod_pulse_width_slide_shape => 5,
         :mod_pulse_width_slide_curve => 0,
         :mod_phase_offset => 0,
-        :mod_invert_wave => 0,
+        :mod_invert_wave => 1,
         :mod_wave => 1,
         :pulse_width => 0.5,
         :pulse_width_slide => 0,
@@ -1878,7 +1882,6 @@ module SonicPi
           :bpm_scale => true
         },
 
-
         :wave =>
         {
           :doc => "Wave shape controlling freq sync saw wave. 0=saw wave, 1=pulse, 2=triangle wave and 3=sine wave.",
@@ -1888,7 +1891,7 @@ module SonicPi
 
         :invert_wave =>
         {
-          :doc => "Invert sync freq control waveform (i.e. flip it on the y axis). 0=normal wave, 1=inverted wave.",
+          :doc => "Invert sync freq control waveform (i.e. flip it on the y axis). 0=uninverted wave, 1=inverted wave.",
           :validations => [v_one_of(:invert_wave, [0, 1])],
           :modulatable => true
         },
@@ -2341,6 +2344,11 @@ end
   end
 
   class FXInfo < BaseInfo
+
+    def trigger_with_logical_clock?
+      true
+    end
+
     def prefix
       "sonic-pi-"
     end
@@ -2383,6 +2391,10 @@ end
 
     def synth_name
       "fx_reverb"
+    end
+
+    def trigger_with_logical_clock?
+      false
     end
 
     def doc
@@ -2705,7 +2717,7 @@ end
         :pulse_width_slide_curve => 0,
         :phase_offset => 0,
         :wave => 1,
-        :invert_wave => 0
+        :invert_wave => 1
       }
     end
 
@@ -2773,7 +2785,7 @@ end
 
         :invert_wave =>
         {
-          :doc => "Invert control waveform (i.e. flip it on the y axis). 0=normal wave, 1=inverted wave.",
+          :doc => "Invert control waveform (i.e. flip it on the y axis). 0=uninverted wave, 1=inverted wave.",
           :validations => [v_one_of(:invert_wave, [0, 1])],
           :modulatable => true
         },
@@ -2861,6 +2873,7 @@ end
         :res_slide_curve => 0,
         :phase_offset => 0,
         :wave => 0,
+        :invert_wave => 1,
         :pulse_width => 0.5,
         :pulse_width_slide => 0,
         :pulse_width_slide_shape => 5,
@@ -3415,12 +3428,20 @@ The way the transpositions are done adds some distortion, particulary to the low
           :validations => [v_positive(:freq_slide)],
           :modulatable => true,
           :bpm_scale => true
+        },
+
+        :mod_amp =>
+        {
+          :doc => "Amplitude of the modulation",
+          :validations => [v_positive(:mod_amp)],
+          :modulatable => true
         }
+
       }
     end
 
     def doc
-      "Attack of the Daleks! Ring mod is a classic effect often used on soundtracks to evoke robots or aliens as it sounds hollow or metallic. We take a 'carrier' signal (a sine wave controlled by the freq argument) and modulate it's amplitude using the signal given inside the fx block. This produces a wide variety of sounds - the best way to learn is to experiment!"
+      "Attack of the Daleks! Ring mod is a classic effect often used on soundtracks to evoke robots or aliens as it sounds hollow or metallic. We take a 'carrier' signal (a sine wave controlled by the freq argument) and modulate its amplitude using the signal given inside the fx block. This produces a wide variety of sounds - the best way to learn is to experiment!"
     end
   end
 
@@ -3454,11 +3475,8 @@ The way the transpositions are done adds some distortion, particulary to the low
         :centre => 100,
         :centre_slide => 0,
         :centre_slide_shape => 5,
-        :centre_slide_curve => 0,
-        :res => 0.5,
-        :res_slide => 0,
-        :res_slide_shape => 5,
-        :res_slide_curve => 0,
+        :centre_slide_curve => 0
+
       }
     end
 
@@ -3466,8 +3484,8 @@ The way the transpositions are done adds some distortion, particulary to the low
       {
         :centre =>
         {
-          :doc => "Centre frequency for the filter in MIDI. ",
-          :validations => [v_greater_than_oet(:level, 0)],
+          :doc => "Centre frequency for the filter as a MIDI note. ",
+          :validations => [v_greater_than_oet(:centre, 0)],
           :modulatable => true
         },
 
@@ -3492,6 +3510,15 @@ With higher values for res we can simulate other filters e.g. telephone lines, b
 
     def synth_name
       "fx_rbpf"
+    end
+
+    def arg_defaults
+      super.merge({
+        :res => 0.5,
+        :res_slide => 0,
+        :res_slide_shape => 5,
+        :res_slide_curve => 0
+      })
     end
 
     def doc
@@ -3852,6 +3879,93 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
     end
   end
 
+  class FXPitchShift < FXInfo
+    def name
+      "Pitch shift"
+    end
+
+    def introduced
+      Version.new(2,5,0)
+    end
+
+    def synth_name
+      "fx_pitch_shift"
+    end
+
+    def trigger_with_logical_clock?
+      :t_minus_delta
+    end
+
+    def arg_defaults
+      {
+        :amp => 1,
+        :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
+        :pre_amp => 1,
+        :pre_amp_slide => 0,
+        :pre_amp_slide_shape => 5,
+        :pre_amp_slide_curve => 0,
+        :mix => 1,
+        :mix_slide => 0,
+        :mix_slide_shape => 5,
+        :mix_slide_curve => 0,
+        :window_size => 0.2,
+        :window_size_slide => 0,
+        :window_size_slide_shape => 1,
+        :window_size_slide_curve => 0,
+        :pitch => 0,
+        :pitch_slide => 0,
+        :pitch_slide_shape => 1,
+        :pitch_slide_curve => 0,
+        :pitch_dis => 0.0,
+        :pitch_dis_slide => 0,
+        :pitch_dis_slide_shape => 1,
+        :pitch_dis_slide_curve => 0,
+        :time_dis => 0.0,
+        :time_dis_slide => 0,
+        :time_dis_slide_shape => 1,
+        :time_dis_slide_curve => 0,
+      }
+    end
+
+    def specific_arg_info
+      {
+        :pitch =>
+        {
+          :doc => "Pitch adjustment in semitones. 1 is up a semitone, 12 is up an octave, -12 is down an octave etc. Maximum upper limit of 24 (up 2 octaves). Lower limit of -72 (down 6 octaves). Decimal numbers can be used for fine tuning.",
+          :validations => [v_greater_than_oet(:pitch, -72), v_less_than_oet(:pitch, 24)],
+          :modulatable => true
+        },
+        :window_size =>
+        {
+          :doc => "Pitch shift works by chopping the input into tiny slices, then playing these slices at a higher or lower rate. If we make the slices small enough and overlap them, it sounds like the original sound with the pitch changed.
+
+The window_size is the length of the slices and is measured in seconds. It needs to be around 0.2 (200ms) or greater for pitched sounds like guitar or bass, and needs to be around 0.02 (20ms) or lower for percussive sounds like drum loops. You can experiment with this to get the best sound for your input.",
+          :validations => [v_greater_than(:window_size, 0.00005)],
+          :modulatable => true
+        },
+        :pitch_dis =>
+        {
+          :doc => "Pitch dispersion - how much random variation in pitch to add. Using a low value like 0.001 can help to \"soften up\" the metallic sounds, especially on drum loops. To be really technical, pitch_dispersion is the maximum random deviation of the pitch from the pitch ratio (which is set by the pitch param)",
+          :validations => [v_greater_than_oet(:pitch_dis, 0)],
+          :modulatable => true
+        },
+        :time_dis =>
+        {
+          :doc => "Time dispersion - how much random delay before playing each grain (measured in seconds). Again, low values here like 0.001 can help to soften up metallic sounds introduced by the effect. Large values are also fun as they can make soundscapes and textures from the input, although you will most likely lose the rhythm of the original. NB - This won't have an effect if it's larger than window_size. ",
+          :validations => [v_greater_than_oet(:time_dis, 0)],
+          :modulatable => true
+        },
+
+      }
+    end
+
+    def doc
+      "Changes the pitch of a signal without affecting tempo. Does this mainly through the pitch parameter which takes a midi number to transpose by. You can also play with the other params to produce some interesting textures and sounds."
+    end
+  end
+
   class FXDistortion < FXInfo
     def name
       "Distortion"
@@ -3988,8 +4102,8 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
         :phase_slide_curve => 0,
         :phase_offset => 0,
         :wave => 4,
-        :invert_wave => 0,
-        :stereo_invert_wave => 0,
+        :invert_wave => 1,
+        :stereo_invert_wave => 1,
         :delay => 5,
         :delay_slide => 0,
         :delay_slide_shape => 5,
@@ -4032,14 +4146,14 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
 
         :invert_wave =>
         {
-          :doc => "Invert flanger control waveform (i.e. flip it on the y axis). 0=normal wave, 1=inverted wave.",
+          :doc => "Invert flanger control waveform (i.e. flip it on the y axis). 0=uninverted wave, 1=inverted wave.",
           :validations => [v_one_of(:invert_wave, [0, 1])],
           :modulatable => true
         },
 
         :stereo_invert_wave =>
         {
-          :doc => "Make the flanger control waveform in the left ear an inversion of the control waveform in the right ear. 0=normal wave, 1=inverted wave. This happens after the standard wave inversion with param :invert_wave.",
+          :doc => "Make the flanger control waveform in the left ear an inversion of the control waveform in the right ear. 0=uninverted wave, 1=inverted wave. This happens after the standard wave inversion with param :invert_wave.",
           :validations => [v_one_of(:stereo_invert_wave, [0, 1])],
           :modulatable => true
         },
@@ -4317,7 +4431,8 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
       :fx_nbpf => FXNBPF.new,
       :fx_rbpf => FXRBPF.new,
       :fx_nrbpf => FXNRBPF.new,
-      :fx_ring => FXRingMod.new,
+      :fx_pitch_shift => FXPitchShift.new,
+      :fx_ring_mod => FXRingMod.new,
       #:fx_chorus => FXChorus.new,
       #:fx_harmoniser => FXHarmoniser.new,
       :fx_flanger => FXFlanger.new
@@ -4380,8 +4495,8 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
         doc << arglist
 
 
-        doc << "<p><font size=\"4\", #{hv_face}>"
-        doc << "  " << v.doc << "</font></p>\n"
+        doc << "<font size=\"4\", #{hv_face}>"
+        doc << "  " << Kramdown::Document.new(v.doc).to_html << "</font>\n"
 
         if klass == SynthInfo
           safe_k = k
@@ -4412,12 +4527,14 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
           doc << "    <td bgcolor=\"#{key_bg_colour}\"><h3><pre> #{ak}:</pre></h3></td>\n"
           doc << "      <td>\n"
           doc << "        <font size=\"4\", #{hv_face}>\n"
-          doc << "          #{av[:doc] || 'write me'}<br/></font>\n"
+          docstring = av[:doc] || 'write me'
+          doc <<  Kramdown::Document.new(docstring).to_html
+          doc << "          <br/><br/></font>\n"
           doc << "          <em><font size=\"3\", #{hv_face}>Default: #{av[:default]}<br/>\n"
-          doc << "          #{av[:constraints].join(",")}<br/>\n" unless av[:constraints].empty?
-          doc << "          #{av[:modulatable] ? "May be changed whilst playing" : "Can not be changed once set"}<br/>\n"
-          doc << "          <a href=#slide>Has slide parameters to shape changes</a><br/>\n" if av[:slidable]
-          doc << "          Scaled with current BPM value\n" if av[:bpm_scale]
+          doc << "          #{av[:constraints].join(",").capitalize}<br/>\n" unless av[:constraints].empty?
+          doc << "          #{av[:modulatable] ? "May be changed whilst playing" : "Can not be changed once set"}\n"
+          doc << "          <br/><a style=\"text-decoration: none; color:dodgerblue;\" href=#slide>Has slide parameters to shape changes</a>\n" if av[:slidable]
+          doc << "          <br/>Scaled with current BPM value\n" if av[:bpm_scale]
           doc << "       </font></em>\n"
           doc << "     </td>\n"
           doc << " </tr>\n"

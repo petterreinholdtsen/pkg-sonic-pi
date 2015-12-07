@@ -3,11 +3,11 @@
 # Full project source: https://github.com/samaaron/sonic-pi
 # License: https://github.com/samaaron/sonic-pi/blob/master/LICENSE.md
 #
-# Copyright 2013, 2014 by Sam Aaron (http://sam.aaron.name).
+# Copyright 2013, 2014, 2015 by Sam Aaron (http://sam.aaron.name).
 # All rights reserved.
 #
-# Permission is granted for use, copying, modification, distribution,
-# and distribution of modified versions of this work as long as this
+# Permission is granted for use, copying, modification, and
+# distribution of modified versions of this work as long as this
 # notice is included.
 #++
 require_relative "util"
@@ -164,8 +164,10 @@ module SonicPi
       p = Promise.new
       connected = false
 
+
       boot_s = OSC::Server.new(5998)
       boot_s.add_method '*' do |m|
+        log "Boot - Receiving ack from server on port 5998"
         p.deliver! true unless connected
         connected = true
       end
@@ -179,14 +181,16 @@ module SonicPi
         Thread.current.thread_variable_set(:sonic_pi_thread_group, :scsynth_external_boot_ack)
         loop do
           begin
+            log "Boot - Sending /status to server: #{@hostname}:#{@port}"
             boot_s.send(OSC::Message.new("/status"), @hostname, @port)
           rescue Exception => e
+            log "Boot - Error sending /status to server: #{e.message}"
           end
           sleep 0.25
         end
       end
 
-      log "Starting the SuperCollider server..."
+      log "Boot - Starting the SuperCollider server..."
       yield
 
       begin
@@ -199,8 +203,9 @@ module SonicPi
         boot_s.stop
       end
 
-      raise "Unable to connect to scsynth" unless connected
+      raise "Boot - Unable to connect to scsynth" unless connected
 
+      log "Boot - Server connection established"
     end
 
     def boot_server_osx

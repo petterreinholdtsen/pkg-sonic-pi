@@ -4,11 +4,11 @@
 # Full project source: https://github.com/samaaron/sonic-pi
 # License: https://github.com/samaaron/sonic-pi/blob/master/LICENSE.md
 #
-# Copyright 2013, 2014 by Sam Aaron (http://sam.aaron.name).
+# Copyright 2013, 2014, 2015 by Sam Aaron (http://sam.aaron.name).
 # All rights reserved.
 #
-# Permission is granted for use, copying, modification, distribution,
-# and distribution of modified versions of this work as long as this
+# Permission is granted for use, copying, modification, and
+# distribution of modified versions of this work as long as this
 # notice is included.
 #++
 
@@ -21,40 +21,10 @@ require_relative "../sonicpi/lib/sonicpi/synthinfo"
 require_relative "../sonicpi/lib/sonicpi/util"
 require_relative "../sonicpi/lib/sonicpi/spiderapi"
 require_relative "../sonicpi/lib/sonicpi/mods/sound"
+require_relative "../sonicpi/lib/sonicpi/mods/minecraftpi"
 
-require 'kramdown'
 require 'active_support/inflector'
 
-# i18n not enabled until translations are ready
-enable_i18n = false
-
-class MarkdownConverter
-  def self.convert(contents)
-    # GitHub markdown syntax uses ```` to mark code blocks Kramdown uses ~~~~
-    # Therefore, let's fix-point on GitHub syntax, and fudge it
-    # into Kramdown syntax where necessary
-    contents.gsub!(/\`\`\`\`*/, '~~~~')
-
-    # todo: CSS
-    contents_html = Kramdown::Document.new(contents).to_html
-    massage!(contents_html)
-  end
-
-  def self.massage!(html)
-    html.gsub!(/<h1.*?>/, '<p> <span style="font-size:25px; color:white;background-color:deeppink;">')
-    html.gsub!(/<h2.*?>/, '<br><p><span style="font-size:20px; color:white; background-color:dodgerblue;">')
-    html.gsub!(/<\/h1>/, '</span></p>')
-    html.gsub!(/<\/h2>/, '</span></p>')
-    html.gsub!(/<p>/, '<p style="font-size:15px;color:#5e5e5e;">')
-    html.gsub!(/<em>/, '<em style="font-size:15px;color:darkorange;">')
-    html.gsub!(/<ol>/, '<ol style="font-size:15px;color:#5e5e5e;">')
-    html.gsub!(/<ul>/, '<ul style="font-size:15px;color:#5e5e5e;">')
-
-    html.gsub!(/<code>/, '<code style="font-size:15px; color:deeppink; background-color:white">')
-    html.gsub!(/<a href/, '<a style="text-decoration: none; color:dodgerblue;" href')
-    "<font face=\"HelveticaNeue-Light,Helvetica Neue Light,Helvetica Neue\">\n\n" + html + "</font>"
-  end
-end
 
 include SonicPi::Util
 
@@ -109,7 +79,7 @@ make_tab = lambda do |name, doc_items, titleize=false, should_sort=true, with_ke
     docs << ")" unless title.ascii_only?
 
     docs << ", "
-    
+
     if with_keyword then
       docs << "\"#{n.downcase}\""
     else
@@ -147,7 +117,7 @@ make_tutorial = lambda do |lang|
     name = "   #{name}" if name.match(/\A[0-9]+\.[0-9]+/)
     # read remaining content of markdown
     markdown = f.read
-    html = MarkdownConverter.convert markdown
+    html = SonicPi::MarkdownConverter.convert markdown
     tutorial_html_map[name] = html
   end
 
@@ -178,20 +148,16 @@ ruby_html_map = {
 #  "loop" => "Loop forever",
 }
 
-if enable_i18n then
-  # this will sort locale code names by reverse length
-  # to make sure that a more specific locale is handled
-  # before the generic language code,
-  # e.g., "de_CH" should be handled before "de"
-  languages = Dir.
-    glob("#{tutorial_path}/*").
-    select {|f| File.directory? f}.
-    map {|f| File.basename f}.
-    select {|n| n != "en"}.
-    sort_by {|n| -n.length}
-else
-  languages = []
-end
+# this will sort locale code names by reverse length
+# to make sure that a more specific locale is handled
+# before the generic language code,
+# e.g., "de_CH" should be handled before "de"
+languages = Dir.
+  glob("#{tutorial_path}/*").
+  select {|f| File.directory? f}.
+  map {|f| File.basename f}.
+  select {|n| n != "en"}.
+  sort_by {|n| -n.length}
 
 docs << "\n  QString systemLocale = QLocale::system().name();\n\n" unless languages.empty?
 
@@ -224,8 +190,20 @@ SonicPi::SynthInfo.get_all.each do |k, v|
   v.arg_info.each do |ak, av|
     docs << "<< \"#{ak}:\" ";
   end
-  docs <<";\n"
+  docs << ";\n"
   docs << "  autocomplete->addFXArgs(\":#{safe_k}\", fxtmp);\n\n"
+end
+
+
+SonicPi::SynthInfo.get_all.each do |k, v|
+  next unless v.is_a? SonicPi::SynthInfo
+  docs << "  // synth :#{k}\n"
+  docs << "  fxtmp.clear(); fxtmp "
+  v.arg_info.each do |ak, av|
+    docs << "<< \"#{ak}:\" ";
+  end
+  docs << ";\n"
+  docs << "  autocomplete->addSynthArgs(\":#{k}\", fxtmp);\n\n"
 end
 
 
@@ -274,9 +252,9 @@ info_sources.each do |src|
 
   input = IO.read(input_path, :encoding => 'utf-8')
   if ext == "md"
-    html = MarkdownConverter.convert(input)
+    html = SonicPi::MarkdownConverter.convert(input)
   else
-    html = MarkdownConverter.massage!(input)
+    html = SonicPi::MarkdownConverter.massage!(input)
   end
 
   output_path = "#{outputdir}/#{bn}.html"

@@ -3,13 +3,14 @@
 // Full project source: https://github.com/samaaron/sonic-pi
 // License: https://github.com/samaaron/sonic-pi/blob/master/LICENSE.md
 //
-// Copyright 2013, 2014 by Sam Aaron (http://sam.aaron.name).
+// Copyright 2013, 2014, 2015 by Sam Aaron (http://sam.aaron.name).
 // All rights reserved.
 //
-// Permission is granted for use, copying, modification, distribution,
-// and distribution of modified versions of this work as long as this
+// Permission is granted for use, copying, modification, and
+// distribution of modified versions of this work as long as this
 // notice is included.
 //++
+
 
 // Standard stuff
 #include <iostream>
@@ -57,6 +58,7 @@
 #include <QToolButton>
 #include <QSettings>
 #include <QScrollBar>
+#include <QSignalMapper>
 
 // QScintilla stuff
 #include <Qsci/qsciapis.h>
@@ -68,6 +70,7 @@
 
 #include "oschandler.h"
 #include "sonicpiudpserver.h"
+#include "sonicpitcpserver.h"
 
 // OSC stuff
 #include "oscpkt.hh"
@@ -94,11 +97,25 @@ MainWindow::MainWindow(QApplication &app, QMainWindow* splash)
 MainWindow::MainWindow(QApplication &app, QSplashScreen* splash)
 #endif
 {
+  this->protocol = UDP;
   this->splash = splash;
+
+  if(protocol == TCP){
+    clientSock = new QTcpSocket(this);
+  }
+
+
+  printAsciiArtLogo();
+  // kill any zombie processes that may exist
+  // better: test to see if UDP ports are in use, only kill/sleep if so
+  // best: kill SCSynth directly if needed
+  qDebug() << "[GUI] - shutting down any pre-existing audio servers...";
+  Message msg("/exit");
+  sendOSC(msg);
+  sleep(2);
 
   this->setUnifiedTitleAndToolBarOnMac(true);
   this->setWindowIcon(QIcon(":images/icon-smaller.png"));
-
 
   currentLine = 0;
   currentIndex = 0;
@@ -114,19 +131,18 @@ MainWindow::MainWindow(QApplication &app, QSplashScreen* splash)
 
   QThreadPool::globalInstance()->setMaxThreadCount(3);
 
-  // kill any zombie processes that may exist
-  // better: test to see if UDP ports are in use, only kill/sleep if so
-  // best: kill SCSynth directly if needed
-  Message msg("/exit");
-  sendOSC(msg);
-  sleep(2);
-
-
   server_thread = QtConcurrent::run(this, &MainWindow::startServer);
 
   OscHandler* handler = new OscHandler(this, this->outputPane, this->errorPane);
-  sonicPiServer = new SonicPiUDPServer(this, handler);
-  osc_thread = QtConcurrent::run(sonicPiServer, &SonicPiUDPServer::startServer);
+
+  if(protocol == UDP){
+    sonicPiServer = new SonicPiUDPServer(this, handler);
+    osc_thread = QtConcurrent::run(sonicPiServer, &SonicPiServer::startServer);
+  }
+  else{
+    sonicPiServer = new SonicPiTCPServer(this, handler);
+    sonicPiServer->startServer();
+  }
 
   // Window layout
   tabs = new QTabWidget();
@@ -139,13 +155,89 @@ MainWindow::MainWindow(QApplication &app, QSplashScreen* splash)
   lexer->setAutoIndentStyle(SonicPiScintilla::AiMaintain);
 
   // create workspaces and add them to the tabs
+  // workspace shortcuts
+  signalMapper = new QSignalMapper (this) ;
   for(int ws = 0; ws < workspace_max; ws++) {
     std::string s;
 
-    workspaces[ws] = new SonicPiScintilla(lexer);
-    QString w = QString(tr("Workspace %1")).arg(QString::number(ws + 1));
-    tabs->addTab(workspaces[ws], w);
+
+    SonicPiScintilla *workspace = new SonicPiScintilla(lexer);
+
+    //tab completion when in list
+    QShortcut *indentLine = new QShortcut(QKeySequence("Tab"), workspace);
+    connect (indentLine, SIGNAL(activated()), signalMapper, SLOT(map())) ;
+    signalMapper -> setMapping (indentLine, (QObject*)workspace);
+
+    //transpose chars
+    QShortcut *transposeChars = new QShortcut(ctrlKey('t'), workspace);
+    connect (transposeChars, SIGNAL(activated()), workspace, SLOT(transposeChars())) ;
+
+    //move line or selection up and down
+    QShortcut *moveLineUp = new QShortcut(ctrlMetaKey('p'), workspace);
+    connect (moveLineUp, SIGNAL(activated()), workspace, SLOT(moveLineOrSelectionUp())) ;
+
+    QShortcut *moveLineDown = new QShortcut(ctrlMetaKey('n'), workspace);
+    connect (moveLineDown, SIGNAL(activated()), workspace, SLOT(moveLineOrSelectionDown())) ;
+
+    // Windows-style shortcuts for copy and paste
+
+    QShortcut *winCopy = new QShortcut(ctrlKey('c'), workspace);
+    connect (winCopy, SIGNAL(activated()), workspace, SLOT(copy())) ;
+    QShortcut *winPaste = new QShortcut(ctrlKey('v'), workspace);
+    connect (winPaste, SIGNAL(activated()), workspace, SLOT(paste())) ;
+
+    //set Mark
+#ifdef Q_OS_MAC
+    QShortcut *setMark = new QShortcut(QKeySequence("Meta+Space"), workspace);
+#else
+    QShortcut *setMark = new QShortcut(QKeySequence("Ctrl+Space"), workspace);
+#endif
+    connect (setMark, SIGNAL(activated()), workspace, SLOT(setMark())) ;
+
+    //escape
+    QShortcut *escape = new QShortcut(ctrlKey('g'), workspace);
+    QShortcut *escape2 = new QShortcut(QKeySequence("Escape"), workspace);
+    connect(escape, SIGNAL(activated()), workspace, SLOT(escapeAndCancelSelection()));
+    connect(escape, SIGNAL(activated()), this, SLOT(resetErrorPane()));
+    connect(escape2, SIGNAL(activated()), workspace, SLOT(escapeAndCancelSelection()));
+    connect(escape2, SIGNAL(activated()), this, SLOT(resetErrorPane()));
+
+    //quick nav by jumping up and down 10 lines at a time
+    QShortcut *forwardTenLines = new QShortcut(shiftMetaKey('u'), workspace);
+    connect(forwardTenLines, SIGNAL(activated()), workspace, SLOT(forwardTenLines()));
+    QShortcut *backTenLines = new QShortcut(shiftMetaKey('d'), workspace);
+    connect(backTenLines, SIGNAL(activated()), workspace, SLOT(backTenLines()));
+
+    //cut to end of line
+    QShortcut *cutToEndOfLine = new QShortcut(ctrlKey('k'), workspace);
+    connect(cutToEndOfLine, SIGNAL(activated()), workspace, SLOT(cutLineFromPoint()));
+
+    //Emacs live copy and cut
+    QShortcut *copyToBuffer = new QShortcut(metaKey(']'), workspace);
+    connect(copyToBuffer, SIGNAL(activated()), workspace, SLOT(copyClear()));
+    QShortcut *cutToBuffer = new QShortcut(ctrlKey(']'), workspace);
+    connect(cutToBuffer, SIGNAL(activated()), workspace, SLOT(cut()));
+
+    //upcase next word
+    QShortcut *upcaseWord= new QShortcut(metaKey('u'), workspace);
+    connect(upcaseWord, SIGNAL(activated()), workspace, SLOT(upcaseWordOrSelection()));
+
+    //downcase next word
+    QShortcut *downcaseWord= new QShortcut(metaKey('l'), workspace);
+    connect(downcaseWord, SIGNAL(activated()), workspace, SLOT(downcaseWordOrSelection()));
+
+    //Goto nth Tab
+    QShortcut *changeTab = new QShortcut(metaKey(int2char(ws)), this);
+    connect(changeTab, SIGNAL(activated()), signalMapper, SLOT(map()));
+    signalMapper -> setMapping(changeTab, ws);
+
+    QString w = QString(tr("Workspace %1")).arg(QString::number(ws));
+    workspaces[ws] = workspace;
+    tabs->addTab(workspace, w);
   }
+
+  connect(signalMapper, SIGNAL(mapped(int)), this, SLOT(changeTab(int)));
+  connect(signalMapper, SIGNAL(mapped(QObject*)), this, SLOT(completeListOrIndentLine(QObject*)));
 
   QFont font("Monospace");
   font.setStyleHint(QFont::Monospace);
@@ -175,9 +267,23 @@ MainWindow::MainWindow(QApplication &app, QSplashScreen* splash)
 
   outputPane->zoomIn(1);
   errorPane->zoomIn(1);
-  errorPane->setMaximumHeight(100);
+  errorPane->setMaximumHeight(130);
+  errorPane->setMinimumHeight(130);
+
+  // hudPane = new QTextBrowser;
+  // hudPane->setMinimumHeight(130);
+  // hudPane->setHtml("<center><img src=\":/images/logo.png\" height=\"113\" width=\"138\"></center>");
+  // hudWidget = new QDockWidget(this);
+  // hudWidget->setFeatures(QDockWidget::NoDockWidgetFeatures);
+  // hudWidget->setAllowedAreas(Qt::RightDockWidgetArea);
+  // hudWidget->setTitleBarWidget(new QWidget());
+  // addDockWidget(Qt::RightDockWidgetArea, hudWidget);
+  // hudWidget->setWidget(hudPane);
+  // hudWidget->setObjectName("hud");
+
 
   prefsWidget = new QDockWidget(tr("Preferences"), this);
+  prefsWidget->setFocusPolicy(Qt::NoFocus);
   prefsWidget->setAllowedAreas(Qt::RightDockWidgetArea);
   prefsWidget->setFeatures(QDockWidget::DockWidgetClosable);
   prefsCentral = new QWidget;
@@ -187,6 +293,7 @@ MainWindow::MainWindow(QApplication &app, QSplashScreen* splash)
   prefsWidget->setObjectName("prefs");
 
   outputWidget = new QDockWidget(tr("Log"), this);
+  outputWidget->setFocusPolicy(Qt::NoFocus);
   outputWidget->setFeatures(QDockWidget::NoDockWidgetFeatures);
   outputWidget->setAllowedAreas(Qt::RightDockWidgetArea);
   outputWidget->setWidget(outputPane);
@@ -194,13 +301,16 @@ MainWindow::MainWindow(QApplication &app, QSplashScreen* splash)
   outputWidget->setObjectName("output");
 
   docsCentral = new QTabWidget;
+  docsCentral->setFocusPolicy(Qt::NoFocus);
   docsCentral->setTabsClosable(false);
   docsCentral->setMovable(false);
-  docsCentral->setTabPosition(QTabWidget::West);
+  docsCentral->setTabPosition(QTabWidget::South);
 
   docPane = new QTextBrowser;
+  docPane->setFocusPolicy(Qt::NoFocus);
+  docPane->setMinimumHeight(200);
   docPane->setOpenExternalLinks(true);
-  QString style = "QTextBrowser { padding-left:10; padding-top:10; padding-bottom:10; padding-right:10 ; background:white;}";
+  QString style = "QTextBrowser { selection-color: white; selection-background-color: deeppink; padding-left:10; padding-top:10; padding-bottom:10; padding-right:10 ; background:white;}";
   docPane->setStyleSheet(style);
 
   QShortcut *up = new QShortcut(ctrlKey('p'), docPane);
@@ -231,19 +341,24 @@ MainWindow::MainWindow(QApplication &app, QSplashScreen* splash)
   docW->setLayout(docLayout);
 
   docWidget = new QDockWidget(tr("Help"), this);
+  docWidget->setFocusPolicy(Qt::NoFocus);
   docWidget->setAllowedAreas(Qt::BottomDockWidgetArea);
   docWidget->setWidget(docW);
   docWidget->setObjectName("help");
 
   addDockWidget(Qt::BottomDockWidgetArea, docWidget);
   docWidget->hide();
-  connect(docWidget, SIGNAL(visibilityChanged(bool)), this,
-	  SLOT(helpClosed(bool)));
+
+  // Currently causes a segfault when dragging doc pane out of main
+  // window:
+  // connect(docWidget, SIGNAL(visibilityChanged(bool)), this,
+  // SLOT(helpClosed(bool)));
 
   QVBoxLayout *mainWidgetLayout = new QVBoxLayout;
   mainWidgetLayout->addWidget(tabs);
   mainWidgetLayout->addWidget(errorPane);
   QWidget *mainWidget = new QWidget;
+  mainWidget->setFocusPolicy(Qt::NoFocus);
   errorPane->hide();
   mainWidget->setLayout(mainWidgetLayout);
   setCentralWidget(mainWidget);
@@ -255,7 +370,9 @@ MainWindow::MainWindow(QApplication &app, QSplashScreen* splash)
 
   readSettings();
 
+  #ifndef Q_OS_MAC
   setWindowTitle(tr("Sonic Pi"));
+  #endif
 
   connect(&app, SIGNAL( aboutToQuit() ), this, SLOT( onExitCleanup() ) );
 
@@ -263,6 +380,63 @@ MainWindow::MainWindow(QApplication &app, QSplashScreen* splash)
 
   initPrefsWindow();
   initDocsWindow();
+
+  QSettings settings("uk.ac.cam.cl", "Sonic Pi");
+
+  if(settings.value("first_time", 1).toInt() == 1) {
+    QTextEdit* startupPane = new QTextEdit;
+    startupPane->setReadOnly(true);
+    startupPane->setFixedSize(600, 615);
+    startupPane->setWindowIcon(QIcon(":images/icon-smaller.png"));
+    startupPane->setWindowTitle(tr("Welcome to Sonic Pi"));
+    addUniversalCopyShortcuts(startupPane);
+    QString html;
+
+    startupPane->setHtml(readFile(":/html/startup.html"));
+    docWidget->show();
+    startupPane->show();
+  }
+}
+
+void MainWindow::changeTab(int id){
+  tabs->setCurrentIndex(id);
+}
+
+void MainWindow::completeListOrIndentLine(QObject* ws){
+  SonicPiScintilla *spws = ((SonicPiScintilla*)ws);
+  if(spws->isListActive()) {
+    spws->tabCompleteifList();
+  }
+  else {
+    indentCurrentLineOrSelection(spws);
+  }
+}
+
+void MainWindow::indentCurrentLineOrSelection(SonicPiScintilla* ws) {
+  int start_line, finish_line, point_line, point_index;
+  ws->getCursorPosition(&point_line, &point_index);
+  if(ws->hasSelectedText()) {
+    statusBar()->showMessage(tr("Indenting selection..."), 2000);
+    int unused_a, unused_b;
+    ws->getSelection(&start_line, &unused_a, &finish_line, &unused_b);
+  } else {
+    statusBar()->showMessage(tr("Indenting line..."), 2000);
+    start_line = point_line;
+    finish_line = point_line;
+  }
+
+
+  std::string code = ws->text().toStdString();
+
+  Message msg("/indent-selection");
+  std::string filename = workspaceFilename(ws);
+  msg.pushStr(filename);
+  msg.pushStr(code);
+  msg.pushInt32(start_line);
+  msg.pushInt32(finish_line);
+  msg.pushInt32(point_line);
+  msg.pushInt32(point_index);
+  sendOSC(msg);
 }
 
 QString MainWindow::rootPath() {
@@ -305,8 +479,13 @@ void MainWindow::startServer(){
     prg_path = QDir::toNativeSeparators(prg_path);
     prg_arg = QDir::toNativeSeparators(prg_arg);
 
+
     QStringList args;
     args << prg_arg;
+
+    if(protocol == TCP){
+        args << "-t";
+    }
 
     QString sp_user_path = QDir::homePath() + QDir::separator() + ".sonic-pi";
     log_path =  sp_user_path + QDir::separator() + "log";
@@ -319,7 +498,8 @@ void MainWindow::startServer(){
     std::cout.rdbuf(stdlog.rdbuf());
   #endif
 
-    std::cout << prg_path.toStdString() << " " << prg_arg.toStdString() << std::endl;
+    //    std::cout << "[GUI] - exec "<< prg_path.toStdString() << " " << prg_arg.toStdString() << std::endl;
+    std::cout << "[GUI] - booting live coding server" << std::endl;
 
     QString sp_error_log_path = log_path + QDir::separator() + "errors.log";
     QString sp_output_log_path = log_path + QDir::separator() + "output.log";
@@ -334,9 +514,9 @@ void MainWindow::startServer(){
 
 void MainWindow::waitForServiceSync() {
   int timeout = 30;
+  qDebug() << "[GUI] - waiting for server to connect...";
   while (sonicPiServer->waitForServer() && timeout-- > 0) {
     sleep(1);
-    std::cout << "Waiting for server..." << std::endl;
     if(sonicPiServer->isIncomingPortOpen()) {
       Message msg("/ping");
       msg.pushStr("QtClient/1/hello");
@@ -351,7 +531,8 @@ void MainWindow::waitForServiceSync() {
     return;
   }
 
-  QMetaObject::invokeMethod(this, "serverStarted", Qt::QueuedConnection);
+    qDebug() << "[GUI] - server connection established";
+
 }
 
 void MainWindow::splashClose() {
@@ -366,19 +547,27 @@ void MainWindow::serverStarted() {
   splashClose();
   loadWorkspaces();
 
-  this->showNormal();
+  QSettings settings("uk.ac.cam.cl", "Sonic Pi");
+
+  if(settings.value("first_time", 1).toInt() == 1) {
+    this->showMaximized();
+  } else {
+    this->showNormal();
+
+  }
+  this->changeShowLineNumbers();
 }
 
 
 void MainWindow::serverError(QProcess::ProcessError error) {
   sonicPiServer->stopServer();
-  std::cout << "Server Error: " << error <<std::endl;
+  std::cout << "[GUI] - Server Error: " << error <<std::endl;
   std::cout << serverProcess->readAllStandardError().data() << std::endl;
   std::cout << serverProcess->readAllStandardOutput().data() << std::endl;
 }
 
 void MainWindow::serverFinished(int exitCode, QProcess::ExitStatus exitStatus) {
-  std::cout << "Server Finished: " << exitCode << ", " << exitStatus << std::endl;
+  std::cout << "[GUI] - Server Finished: " << exitCode << ", " << exitStatus << std::endl;
   std::cout << serverProcess->readAllStandardError().data() << std::endl;
   std::cout << serverProcess->readAllStandardOutput().data() << std::endl;
 }
@@ -460,6 +649,7 @@ void MainWindow::initPrefsWindow() {
   check_args = new QCheckBox(tr("Check synth args"));
   clear_output_on_run = new QCheckBox(tr("Clear output on run"));
 
+
   QVBoxLayout *debug_box_layout = new QVBoxLayout;
   debug_box_layout->addWidget(print_output);
   debug_box_layout->addWidget(check_args);
@@ -477,13 +667,25 @@ void MainWindow::initPrefsWindow() {
   update_box_layout->addWidget(check_updates);
   update_box->setLayout(update_box_layout);
 
+
+  QGroupBox *editor_box = new QGroupBox(tr("Editor"));
+  show_line_numbers = new QCheckBox(tr("Show line numbers"));
+
+  connect(show_line_numbers, SIGNAL(clicked()), this, SLOT(changeShowLineNumbers()));
+  editor_box->setToolTip(tr("Editor Preferences"));
+
+  QVBoxLayout *editor_box_layout = new QVBoxLayout;
+  editor_box_layout->addWidget(show_line_numbers);
+  editor_box->setLayout(editor_box_layout);
+
 #if defined(Q_OS_LINUX)
-   grid->addWidget(audioOutputBox, 1, 0);
-   grid->addWidget(volBox, 1, 1);
+   grid->addWidget(audioOutputBox, 0, 0);
+   grid->addWidget(volBox, 0, 1);
 #endif
-  grid->addWidget(debug_box, 0, 1);
-  grid->addWidget(advancedAudioBox, 0, 0);
+  grid->addWidget(debug_box, 1, 1);
+  grid->addWidget(advancedAudioBox, 1, 0);
   grid->addWidget(update_box, 2, 0);
+  grid->addWidget(editor_box, 2, 1);
   prefsCentral->setLayout(grid);
 
 
@@ -493,6 +695,7 @@ void MainWindow::initPrefsWindow() {
   check_args->setChecked(settings.value("prefs/check-args", true).toBool());
   print_output->setChecked(settings.value("prefs/print-output", true).toBool());
   clear_output_on_run->setChecked(settings.value("prefs/clear-output-on-run", true).toBool());
+  show_line_numbers->setChecked(settings.value("prefs/show-line-numbers", true).toBool());
   mixer_force_mono->setChecked(settings.value("prefs/mixer-force-mono", false).toBool());
   mixer_invert_stereo->setChecked(settings.value("prefs/mixer-invert-stereo", false).toBool());
 
@@ -551,33 +754,23 @@ void MainWindow::startupError(QString msg) {
   QTimer::singleShot(0, this, SLOT(close()));
 }
 
-void MainWindow::replaceBuffer(QString id, QString content) {
+void MainWindow::replaceBuffer(QString id, QString content, int line, int index, int first_line) {
   SonicPiScintilla* ws = filenameToWorkspace(id.toStdString());
-  int line;
-  int index;
-  QString line_content;
-  int line_length;
-  int new_line_length;
-  ws->getCursorPosition(&line, &index);
-  line_content = ws->text(line);
-  line_length = line_content.length();
   ws->selectAll();
   ws->replaceSelectedText(content);
-  if(ws->lineLength(line) == -1) {
-    // new text is clearly different from old, just put cursor at start
-    // of buffer
-    ws->setCursorPosition(0, 0);
-  }
-  else {
-    line_content = ws->text(line);
-    new_line_length = line_content.length();
-    int diff = new_line_length - line_length;
-    ws->setCursorPosition(line, index + diff);
-  }
+  ws->setCursorPosition(line, index);
+  ws->setFirstVisibleLine(first_line);
+}
+
+void MainWindow::replaceLines(QString id, QString content, int start_line, int finish_line, int point_line, int point_index) {
+  SonicPiScintilla* ws = filenameToWorkspace(id.toStdString());
+  ws->replaceLines(start_line, finish_line, content);
+  ws->setCursorPosition(point_line, point_index);
 }
 
 std::string MainWindow::number_name(int i) {
   switch(i) {
+  case 0: return "zero";
   case 1: return "one";
   case 2: return "two";
   case 3: return "three";
@@ -586,6 +779,7 @@ std::string MainWindow::number_name(int i) {
   case 6: return "six";
   case 7: return "seven";
   case 8: return "eight";
+  case 9: return "nine";
   default: assert(false); return "";
   }
 }
@@ -594,7 +788,7 @@ std::string MainWindow::workspaceFilename(SonicPiScintilla* text)
 {
   for(int i = 0; i < workspace_max; i++) {
     if(text == workspaces[i]) {
-      return "workspace_" + number_name(i + 1);
+      return "workspace_" + number_name(i);
     }
   }
   return "default";
@@ -602,11 +796,11 @@ std::string MainWindow::workspaceFilename(SonicPiScintilla* text)
 
 void MainWindow::loadWorkspaces()
 {
-  std::cout << "loading workspaces" << std::endl;
+  std::cout << "[GUI] - loading workspaces" << std::endl;
 
   for(int i = 0; i < workspace_max; i++) {
     Message msg("/load-buffer");
-    std::string s = "workspace_" + number_name(i + 1);
+    std::string s = "workspace_" + number_name(i);
     msg.pushStr(s);
     sendOSC(msg);
   }
@@ -614,12 +808,12 @@ void MainWindow::loadWorkspaces()
 
 void MainWindow::saveWorkspaces()
 {
-  std::cout << "saving workspaces" << std::endl;
+  std::cout << "[GUI] - saving workspaces" << std::endl;
 
   for(int i = 0; i < workspace_max; i++) {
     std::string code = workspaces[i]->text().toStdString();
     Message msg("/save-buffer");
-    std::string s = "workspace_" + number_name(i + 1);
+    std::string s = "workspace_" + number_name(i);
     msg.pushStr(s);
     msg.pushStr(code);
     sendOSC(msg);
@@ -654,16 +848,45 @@ bool MainWindow::saveAs()
 
 void MainWindow::sendOSC(Message m)
 {
-  UdpSocket sock;
+  int TIMEOUT = 30000;
   int PORT_NUM = 4557;
-  sock.connectTo("localhost", PORT_NUM);
-  if (!sock.isOk()) {
-    std::cerr << "Error connection to port " << PORT_NUM << ": " << sock.errorMessage() << "\n";
-  } else {
 
-    PacketWriter pw;
-    pw.addMessage(m);
-    sock.sendPacket(pw.packetData(), pw.packetSize());
+  if(protocol == UDP){
+    UdpSocket sock;
+    sock.connectTo("localhost", PORT_NUM);
+    if (!sock.isOk()) {
+        std::cerr << "Error connection to port " << PORT_NUM << ": " << sock.errorMessage() << "\n";
+    } else {
+        PacketWriter pw;
+        pw.addMessage(m);
+        sock.sendPacket(pw.packetData(), pw.packetSize());
+    }
+  }
+  else{
+    if (clientSock->state() != QAbstractSocket::ConnectedState){
+      clientSock->connectToHost("localhost", PORT_NUM,  QIODevice::ReadWrite);
+    }
+
+    if(!clientSock->waitForConnected(TIMEOUT)){
+      std::cerr <<  "Timeout, could not connect" << "\n";
+      clientSock->abort();
+      return;
+    }
+
+    if(clientSock->state() == QAbstractSocket::ConnectedState){
+      PacketWriter pw;
+      pw.addMessage(m);
+
+      int bytesWritten = clientSock->write(pw.packetDataForStream(), pw.packetSize()+sizeof(uint32_t));
+      clientSock->waitForBytesWritten();
+
+      if (bytesWritten < 0){
+        std::cerr <<  "Failed to send bytes" << "\n";
+      }
+
+    } else {
+      std::cerr << "Client gone away: " << "\n";
+    }
   }
 }
 
@@ -705,7 +928,7 @@ void MainWindow::runCode()
   }
 
   msg.pushStr(code);
-  msg.pushStr(QString(tr("Workspace %1")).arg(tabs->currentIndex()+1).toStdString());
+  msg.pushStr(QString(tr("Workspace %1")).arg(tabs->currentIndex()).toStdString());
   sendOSC(msg);
 
   QTimer::singleShot(500, this, SLOT(unhighlightCode()));
@@ -727,11 +950,19 @@ void MainWindow::unhighlightCode()
 void MainWindow::beautifyCode()
 {
   statusBar()->showMessage(tr("Beautifying..."), 2000);
-  std::string code = ((SonicPiScintilla*)tabs->currentWidget())->text().toStdString();
+  SonicPiScintilla* ws = ((SonicPiScintilla*)tabs->currentWidget());
+  std::string code = ws->text().toStdString();
+  int line = 0;
+  int index = 0;
+  ws->getCursorPosition(&line, &index);
+  int first_line = ws->firstVisibleLine();
   Message msg("/beautify-buffer");
   std::string filename = workspaceFilename( (SonicPiScintilla*)tabs->currentWidget());
   msg.pushStr(filename);
   msg.pushStr(code);
+  msg.pushInt32(line);
+  msg.pushInt32(index);
+  msg.pushInt32(first_line);
   sendOSC(msg);
 }
 
@@ -744,14 +975,14 @@ void MainWindow::reloadServerCode()
 
 void MainWindow::enableCheckUpdates()
 {
-  statusBar()->showMessage(tr("Enabling update checking...."), 2000);
+  statusBar()->showMessage(tr("Enabling update checking..."), 2000);
   Message msg("/enable-update-checking");
   sendOSC(msg);
 }
 
 void MainWindow::disableCheckUpdates()
 {
-  statusBar()->showMessage(tr("Disabling update checking...."), 2000);
+  statusBar()->showMessage(tr("Disabling update checking..."), 2000);
   Message msg("/disable-update-checking");
   sendOSC(msg);
 }
@@ -881,14 +1112,14 @@ void MainWindow::changeRPSystemVol(int val)
   //do nothing
   val = val;
 #elif defined(Q_OS_MAC)
-  statusBar()->showMessage(tr("Updating System Volume."), 2000);
+  statusBar()->showMessage(tr("Updating System Volume..."), 2000);
   //do nothing, just print out what it would do on RPi
   float v = (float) val;
   float vol_float = pow(v/100.0, (float)1./3.) * 100.0;
   std::ostringstream ss;
   ss << vol_float;
   QString prog = "amixer cset numid=1 " + QString::fromStdString(ss.str()) + '%';
-  std::cout << prog.toStdString() << std::endl;
+  std::cout << "[GUI] - " << prog.toStdString() << std::endl;
 #else
   //assuming Raspberry Pi
   QProcess *p = new QProcess();
@@ -897,26 +1128,36 @@ void MainWindow::changeRPSystemVol(int val)
   float vol_float = std::pow(v/100.0, (float)1./3.) * 100.0;
   std::ostringstream ss;
   ss << vol_float;
-  statusBar()->showMessage(tr("Updating System Volume."), 2000);
+  statusBar()->showMessage(tr("Updating System Volume..."), 2000);
   QString prog = "amixer cset numid=1 " + QString::fromStdString(ss.str()) + '%';
   p->start(prog);
 #endif
 
 }
 
+void MainWindow::changeShowLineNumbers(){
+  for(int i=0; i < tabs->count(); i++){
+    SonicPiScintilla *ws = (SonicPiScintilla *)tabs->widget(i);
+    if (show_line_numbers->isChecked()){
+      ws->showLineNumbers();
+    } else {
+      ws->hideLineNumbers();
+    }
+  }
+}
 
 void MainWindow::setRPSystemAudioHeadphones()
 {
 #if defined(Q_OS_WIN)
   //do nothing
 #elif defined(Q_OS_MAC)
-  statusBar()->showMessage(tr("Switching To Headphone Audio Output."), 2000);
+  statusBar()->showMessage(tr("Switching To Headphone Audio Output..."), 2000);
   //do nothing, just print out what it would do on RPi
   QString prog = "amixer cset numid=3 1";
-  std::cout << prog.toStdString() << std::endl;
+  std::cout << "[GUI] - " << prog.toStdString() << std::endl;
 #else
   //assuming Raspberry Pi
-  statusBar()->showMessage(tr("Switching To Headphone Audio Output."), 2000);
+  statusBar()->showMessage(tr("Switching To Headphone Audio Output..."), 2000);
   QProcess *p = new QProcess();
   QString prog = "amixer cset numid=3 1";
   p->start(prog);
@@ -929,13 +1170,13 @@ void MainWindow::setRPSystemAudioHDMI()
 #if defined(Q_OS_WIN)
   //do nothing
 #elif defined(Q_OS_MAC)
-  statusBar()->showMessage(tr("Switching To HDMI Audio Output."), 2000);
+  statusBar()->showMessage(tr("Switching To HDMI Audio Output..."), 2000);
   //do nothing, just print out what it would do on RPi
   QString prog = "amixer cset numid=3 2";
-  std::cout << prog.toStdString() << std::endl;
+  std::cout << "[GUI] - " << prog.toStdString() << std::endl;
 #else
   //assuming Raspberry Pi
-  statusBar()->showMessage(tr("Switching To HDMI Audio Output."), 2000);
+  statusBar()->showMessage(tr("Switching To HDMI Audio Output..."), 2000);
   QProcess *p = new QProcess();
   QString prog = "amixer cset numid=3 2";
   p->start(prog);
@@ -948,13 +1189,13 @@ void MainWindow::setRPSystemAudioAuto()
   //do nothing
 
 #elif defined(Q_OS_MAC)
-  statusBar()->showMessage(tr("Switching To Default Audio Output."), 2000);
+  statusBar()->showMessage(tr("Switching To Default Audio Output..."), 2000);
   //do nothing, just print out what it would do on RPi
   QString prog = "amixer cset numid=3 0";
-  std::cout << prog.toStdString() << std::endl;
+  std::cout << "[GUI] - " << prog.toStdString() << std::endl;
 #else
   //assuming Raspberry Pi
-  statusBar()->showMessage(tr("Switching To Default Audio Output."), 2000);
+  statusBar()->showMessage(tr("Switching To Default Audio Output..."), 2000);
   QProcess *p = new QProcess();
   QString prog = "amixer cset numid=3 0";
   p->start(prog);
@@ -978,6 +1219,11 @@ void MainWindow::zoomFontIn()
   if (zoom > 20) zoom = 20;
   ws->setProperty("zoom", QVariant(zoom));
   ws->zoomTo(zoom);
+  if (show_line_numbers->isChecked()){
+    ws->showLineNumbers();
+  } else {
+    ws->hideLineNumbers();
+  }
 }
 
 void MainWindow::zoomFontOut()
@@ -985,9 +1231,14 @@ void MainWindow::zoomFontOut()
   SonicPiScintilla* ws = ((SonicPiScintilla*)tabs->currentWidget());
   int zoom = ws->property("zoom").toInt();
   zoom--;
-  if (zoom < -5) zoom = -5;
+  if (zoom < -10) zoom = -10;
   ws->setProperty("zoom", QVariant(zoom));
   ws->zoomTo(zoom);
+  if (show_line_numbers->isChecked()){
+    ws->showLineNumbers();
+  } else {
+    ws->hideLineNumbers();
+  }
 }
 
 void MainWindow::wheelEvent(QWheelEvent *event)
@@ -999,10 +1250,10 @@ void MainWindow::wheelEvent(QWheelEvent *event)
     else
       zoomFontOut();
   }
+#else
+  (void)event;
 #endif
 }
-
-
 
 void MainWindow::stopRunningSynths()
 {
@@ -1026,13 +1277,35 @@ QKeySequence MainWindow::ctrlKey(char key)
 }
 
 // Cmd on Mac, Alt everywhere else
-QKeySequence MainWindow::cmdAltKey(char key)
+QKeySequence MainWindow::metaKey(char key)
 {
 #ifdef Q_OS_MAC
   return QKeySequence(QString("Ctrl+%1").arg(key));
 #else
   return QKeySequence(QString("alt+%1").arg(key));
 #endif
+}
+
+QKeySequence MainWindow::shiftMetaKey(char key)
+{
+#ifdef Q_OS_MAC
+  return QKeySequence(QString("Shift+Ctrl+%1").arg(key));
+#else
+  return QKeySequence(QString("Shift+alt+%1").arg(key));
+#endif
+}
+
+QKeySequence MainWindow::ctrlMetaKey(char key)
+{
+#ifdef Q_OS_MAC
+  return QKeySequence(QString("Ctrl+Meta+%1").arg(key));
+#else
+  return QKeySequence(QString("Ctrl+alt+%1").arg(key));
+#endif
+}
+
+char MainWindow::int2char(int i){
+  return '0' + i;
 }
 
 // set tooltips, connect event handlers, and add shortcut if applicable
@@ -1056,7 +1329,7 @@ void MainWindow::setupAction(QAction *action, char key, QString tooltip,
   if (key != 0) {
     // create a QShortcut instead of setting the QAction's shortcut
     // so it will still be active with the toolbar hidden
-    new QShortcut(cmdAltKey(key), this, slot);
+    new QShortcut(metaKey(key), this, slot);
   }
 }
 
@@ -1064,15 +1337,9 @@ void MainWindow::createShortcuts()
 {
   new QShortcut(QKeySequence("F1"), this, SLOT(helpContext()));
   new QShortcut(ctrlKey('i'), this, SLOT(helpContext()));
-
-  new QShortcut(cmdAltKey('['), this, SLOT(tabPrev()));
-  new QShortcut(cmdAltKey('{'), this, SLOT(tabPrev()));
-  new QShortcut(cmdAltKey(']'), this, SLOT(tabNext()));
-  new QShortcut(cmdAltKey('}'), this, SLOT(tabNext()));
-  new QShortcut(Qt::Key_Escape, this, SLOT(resetErrorPane()));
-  new QShortcut(ctrlKey('g'), this, SLOT(resetErrorPane()));
-
-  new QShortcut(cmdAltKey('U'), this, SLOT(reloadServerCode()));
+  new QShortcut(metaKey('<'), this, SLOT(tabPrev()));
+  new QShortcut(metaKey('>'), this, SLOT(tabNext()));
+  //new QShortcut(metaKey('U'), this, SLOT(reloadServerCode()));
 }
 
 void MainWindow::createToolBar()
@@ -1117,19 +1384,19 @@ void MainWindow::createToolBar()
   QAction *textIncAct = new QAction(QIcon(":/images/size_up.png"),
 			    tr("Increase Text Size"), this);
   setupAction(textIncAct, '+', tr("Make text bigger"), SLOT(zoomFontIn()));
-  new QShortcut(cmdAltKey('='), this, SLOT(zoomFontIn()));
+  new QShortcut(metaKey('='), this, SLOT(zoomFontIn()));
 
   // Font Size Decrease
   QAction *textDecAct = new QAction(QIcon(":/images/size_down.png"),
 			    tr("Decrease Text Size"), this);
   setupAction(textDecAct, '-', tr("Make text smaller"), SLOT(zoomFontOut()));
-  new QShortcut(cmdAltKey('_'), this, SLOT(zoomFontOut()));
+  new QShortcut(metaKey('_'), this, SLOT(zoomFontOut()));
 
   QWidget *spacer = new QWidget();
   spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 
   toolBar = addToolBar(tr("Tools"));
-
+  toolBar->setObjectName("toolbar");
   toolBar->setIconSize(QSize(270/3, 111/3));
   toolBar->addAction(runAct);
   toolBar->addAction(stopAct);
@@ -1157,6 +1424,7 @@ QString MainWindow::readFile(QString name)
     return "";
 
   QTextStream st(&file);
+  st.setCodec("UTF-8");
   QString s;
   s.append(st.readAll());
   return s;
@@ -1236,7 +1504,7 @@ void MainWindow::toggleRecording() {
 
 void MainWindow::createStatusBar()
 {
-  statusBar()->showMessage(tr("Ready"));
+  statusBar()->showMessage(tr("Ready..."));
 }
 
 void MainWindow::readSettings() {
@@ -1254,7 +1522,7 @@ void MainWindow::readSettings() {
 
   for (int w=0; w < workspace_max; w++) {
     // default zoom is 13
-    int zoom = settings.value(QString("workspace%1zoom").arg(w+1), 13)
+    int zoom = settings.value(QString("workspace%1zoom").arg(w), 13)
       .toInt();
     if (zoom < -5) zoom = -5;
     if (zoom > 20) zoom = 20;
@@ -1266,19 +1534,6 @@ void MainWindow::readSettings() {
 
   restoreState(settings.value("windowState").toByteArray());
 
-  if(settings.value("first_time", 1).toInt() == 1) {
-    QTextEdit* startupPane = new QTextEdit;
-    startupPane->setReadOnly(true);
-    startupPane->setFixedSize(600, 615);
-    startupPane->setWindowIcon(QIcon(":images/icon-smaller.png"));
-    startupPane->setWindowTitle("Welcome to Sonic Pi");
-    addUniversalCopyShortcuts(startupPane);
-    QString html;
-
-    startupPane->setHtml(readFile(":/html/startup.html"));
-    docWidget->show();
-    startupPane->show();
-  }
 }
 
 void MainWindow::writeSettings()
@@ -1292,6 +1547,7 @@ void MainWindow::writeSettings()
   settings.setValue("prefs/check-args", check_args->isChecked());
   settings.setValue("prefs/print-output", print_output->isChecked());
   settings.setValue("prefs/clear-output-on-run", clear_output_on_run->isChecked());
+  settings.setValue("prefs/show-line-numbers", show_line_numbers->isChecked());
   settings.setValue("prefs/mixer-force-mono", mixer_force_mono->isChecked());
   settings.setValue("prefs/mixer-invert-stereo", mixer_invert_stereo->isChecked());
 
@@ -1305,7 +1561,7 @@ void MainWindow::writeSettings()
   settings.setValue("workspace", tabs->currentIndex());
 
   for (int w=0; w < workspace_max; w++) {
-    settings.setValue(QString("workspace%1zoom").arg(w+1),
+    settings.setValue(QString("workspace%1zoom").arg(w),
 		      workspaces[w]->property("zoom"));
   }
 
@@ -1327,7 +1583,7 @@ void MainWindow::loadFile(const QString &fileName, SonicPiScintilla* &text)
   QApplication::setOverrideCursor(Qt::WaitCursor);
   text->setText(in.readAll());
   QApplication::restoreOverrideCursor();
-  statusBar()->showMessage(tr("File loaded"), 2000);
+  statusBar()->showMessage(tr("File loaded..."), 2000);
 }
 
 bool MainWindow::saveFile(const QString &fileName, SonicPiScintilla* text)
@@ -1347,11 +1603,12 @@ bool MainWindow::saveFile(const QString &fileName, SonicPiScintilla* text)
   QString code = text->text();
 #if defined(Q_OS_WIN)
   code.replace("\n", "\r\n"); // CRLF for Windows users
+  code.replace("\r\r\n", "\r\n"); // don't double-replace if already encoded
 #endif
   out << code;
   QApplication::restoreOverrideCursor();
 
-  statusBar()->showMessage(tr("File saved"), 2000);
+  statusBar()->showMessage(tr("File saved..."), 2000);
   return true;
 }
 
@@ -1360,7 +1617,7 @@ SonicPiScintilla* MainWindow::filenameToWorkspace(std::string filename)
   std::string s;
 
   for(int i = 0; i < workspace_max; i++) {
-    s = "workspace_" + number_name(i + 1);
+    s = "workspace_" + number_name(i);
     if(filename == s) {
       return workspaces[i];
     }
@@ -1371,18 +1628,23 @@ SonicPiScintilla* MainWindow::filenameToWorkspace(std::string filename)
 void MainWindow::onExitCleanup()
 {
   if(serverProcess->state() == QProcess::NotRunning) {
-    std::cout << "Server process is not running, something is up..." << std::endl;
+    std::cout << "[GUI] - warning, server process is not running." << std::endl;
     sonicPiServer->stopServer();
+    if(protocol == TCP){
+      clientSock->close();
+    }
   } else {
     if (loaded_workspaces)
       saveWorkspaces();
     sleep(1);
-    std::cout << "Asking server process to exit..." << std::endl;
+    std::cout << "[GUI] - asking server process to exit..." << std::endl;
     Message msg("/exit");
     sendOSC(msg);
   }
-  osc_thread.waitForFinished();
-  std::cout << "Exiting..." << std::endl;
+  if(protocol == UDP){
+    osc_thread.waitForFinished();
+  }
+  std::cout << "[GUI] - exiting. Cheerio :-)" << std::endl;
 
 }
 
@@ -1392,8 +1654,8 @@ void MainWindow::updateDocPane(QListWidgetItem *cur) {
 }
 
 void MainWindow::updateDocPane2(QListWidgetItem *cur, QListWidgetItem *prev) {
+  (void)prev;
   updateDocPane(cur);
-  prev = prev;
 }
 
 void MainWindow::setHelpText(QListWidgetItem *item, const QString filename) {
@@ -1404,6 +1666,7 @@ void MainWindow::setHelpText(QListWidgetItem *item, const QString filename) {
 
   QString s;
   QTextStream st(&file);
+  st.setCodec("UTF-8");
   s.append(st.readAll());
 
   item->setData(32, QVariant(s));
@@ -1523,8 +1786,31 @@ void MainWindow::addUniversalCopyShortcuts(QTextEdit *te){
   new QShortcut(ctrlKey('c'), te, SLOT(copy()));
   new QShortcut(ctrlKey('a'), te, SLOT(selectAll()));
 
-  new QShortcut(cmdAltKey('c'), te, SLOT(copy()));
-  new QShortcut(cmdAltKey('a'), te, SLOT(selectAll()));
+  new QShortcut(metaKey('c'), te, SLOT(copy()));
+  new QShortcut(metaKey('a'), te, SLOT(selectAll()));
+}
+
+void MainWindow::printAsciiArtLogo(){
+
+  QFile file(":/images/logo.txt");
+  if(!file.open(QFile::ReadOnly | QFile::Text)) {
+  }
+
+  QString s;
+  QTextStream st(&file);
+  st.setCodec("UTF-8");
+  s.append(st.readAll());
+  std::cout << std::endl << std::endl << std::endl;
+#if QT_VERSION >= 0x050400
+  qDebug().noquote() << s;
+  std::cout << std::endl << std::endl;
+#else
+  //noquote requires QT 5.4
+  qDebug() << s;
+  std::cout << std::endl;
+#endif
+
+
 }
 
 #include "ruby_help.h"

@@ -3,11 +3,11 @@
 # Full project source: https://github.com/samaaron/sonic-pi
 # License: https://github.com/samaaron/sonic-pi/blob/master/LICENSE.md
 #
-# Copyright 2013, 2014 by Sam Aaron (http://sam.aaron.name).
+# Copyright 2013, 2014, 2015 by Sam Aaron (http://sam.aaron.name).
 # All rights reserved.
 #
-# Permission is granted for use, copying, modification, distribution,
-# and distribution of modified versions of this work as long as this
+# Permission is granted for use, copying, modification, and
+# distribution of modified versions of this work as long as this
 # notice is included.
 #++
 module SonicPi
@@ -95,6 +95,15 @@ module SonicPi
         @info.ctl_validate!(args_h) if @info
       end
       @comms.node_ctl self, args_h
+      self
+    end
+
+    def ctl_now(*args)
+      args_h = resolve_synth_opts_hash_or_array(args)
+      if Thread.current.thread_variable_get(:sonic_pi_mod_sound_check_synth_args)
+        @info.ctl_validate!(args_h) if @info
+      end
+      @comms.node_ctl self, args_h, true
       self
     end
 
