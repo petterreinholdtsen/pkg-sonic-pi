@@ -1,4 +1,5 @@
 # History
+* [v2.7 'Rerezzed'](#v2.7), 10th Sept, 2015
 * [v2.6 'Algorave'](#v2.6), 30th July, 2015
 * [v2.5 'Craft'](#v2.5), 13th April, 2015
 * [v2.4 'Defrost'](#v2.4), 11th Feb, 2015
@@ -6,6 +7,121 @@
 * [v2.2 'Slicer'](#v2.2), 18th Dec, 2014
 * [v2.1 'Core'](#v2.1), 21st Nov, 2014
 * [v2.0 'Phoenix'](#v2.0), 2nd Sept, 2014
+
+<a name="v2.7"></a>
+
+## Version 2.7 - 'Rerezzed'
+*Thursday 10th September, 2015*
+
+This release brings a substantial change to the random number
+generator. This has the unfortunate side effect of breaking backwards
+compatibility.  If you have been using `rand`, `choose`, `shuffle` and
+friends to create predictable patterns for your riffs, your code will
+produce different results in this release. Please let me apologise and
+say it's for a good cause. So what is this good cause?  Well, you can
+now jump backwards and forwards through the random stream giving you way
+more creative control than before! The random stream is now also unified
+with the random stream on the synthesis server allowing you to sync
+behaviour between synths and code. Exciting times.
+
+The sampler has also been super charged. We can now easily change the
+rate via MIDI note intervals with `rpitch:` and stretch the sample whilst
+preserving pitch via `pitch_stretch:` (although with variable results
+`;-)`).
+
+Finally you can now control the global mixer with `set_mixer_control!`
+for those full filter sweeps over the entire sound...
+
+Have fun and happy live coding!
+
+
+### Breaking Changes
+
+* Complete rewrite of random number system. This means if you've been
+  combining calls to `use_random_seed` with randomisation to create
+  predictable melodies/rhythms/timbral manipulations you will
+  unfortunately get different results in `v2.7`. This change is to
+  synchronise both the Ruby rand stream with the one in SuperCollider as
+  well as enabling the reversal of calls to rand via `rand_back`.
+* `sync` now causes the BPM to be inherited from the thread calling the
+  matching `cue`. This may be disabled with the new `bpm_sync:` opt.
+* `rrand` and `rand` now return 0 if called with 0.
+* `invert_chord` now handles negative inversions in a more musically
+  appropriate manner..
+
+
+### New Fns
+
+* `ratio_to_pitch` which provides the inverse of `pitch_to_ratio`
+* `midi_notes` - returns a ring of numbers (mapping the source
+  ring/array through the fn `note`).
+* `rand_back` - reverse the random stream and 'undo' calls to `rand`
+* `rand_skip` - skip forward through the random stream.
+* `rand_reset`- reset the random stream to the last seed.
+
+
+### GUI
+
+* It is now possible to toggle the commenting of whole selections or
+  individual lines with the shortcut `M-/`.
+* Added Icelandic translation.
+
+  
+### Synths & FX
+
+* All synths learned the `decay_level` opt to allow the sustain phase to
+  shift between two distinct values. The default value for `decay_level`
+  is to mirror `sustain_level:` thus preserving current behaviour.
+* `play` and `synth` have now learned the `pitch:` opt to match
+  `sample`. This just increments or decrements the final note.
+* `sample` now correctly validates opts.
+* `sample` learned the `pitch_stretch:` opt which combines `rate:`
+  modification (similar to `beat_stretch:` with `pitch:`. Attempts to
+  maintain the pitch whilst simultaneously changing the rate. The
+  underlying implementation is very basic and can easily destroy the
+  sound.
+* `sample` learned the `rpitch:` opt for simple rate pitch
+  modulation. This modifies the rate to match the specified number of
+  MIDI notes relative from the current pitch. For example, a `rpitch:`
+  of 12 would double the rate.
+* The unit of the FX `:echo`'s `decay:` opt is now beats and the value
+  is scaled with the BPM.
+
+
+### Examples
+
+* Most examples have been tweaked to sound good with the new random
+  generator. 
+* Tilburg has been replaced with Tilburg 2. Play it and get your
+  Algorave on!
+
+
+### Improvements
+
+* Auto-align code on Run.
+* `live_loop` learned the `seed:` opt which will set the new thread with
+  the specified seed prior to initial run.
+* Add check to ensure BPM is a positive value.
+* `density` has now been taught to handle values between 0 and 1 which
+  will now stretch time for the specified block.
+* Errors now no longer print out crazy print version of context object
+  i.e. #<SonicPiSpiderUser1:0x007fc82e1f79a0>
+* Both `in_thread` and `live_loop` have now learned the `delay:` opt
+  which will delay the initial execution by the specified number of
+  beats.
+* Buffer and thread name are now printed on error.  
+* `sample_duration` now understands all the opts that you can pass to `sample`  
+* It is now possible to do basic arithmetic on symbols representing
+  rests: `:r + 3` returns `:r` (a rest plus any MIDI note shift is still
+  a rest).
+
+
+### Bug Fixes
+  
+* Fixed crash when synth args were specified as Rationals.  
+* `note_info` now correctly handles octaves.
+* Fix windows paste shortcut `C-v`.
+* Teach `invert_chord` how to properly handle out of range index ranges.
 
 <a name="v2.6"></a>
 
@@ -47,7 +163,7 @@ Enjoy this release and happy [Algoraving!](http://algorave.com)
 
 * The `res:` opt for all synths and FX now has range 0->1 rather than
   1->0. This means that a higher res value results in more
-  resonance. This will hopefully be more intuitive to beginners less
+  resonance. This will hopefully be more intuitive to beginners and less
   surprising for people with existing synth knowledge.
 * The fn `stop` has been renamed to `kill` for killing specific
   synths. In its place a new fn `stop` has been added to stop a given
@@ -58,14 +174,14 @@ Enjoy this release and happy [Algoraving!](http://algorave.com)
   specify: `invert_wave: true`, rather than `invert_wave: false`. This
   shouldn't affect any code which doesn't explicitly set the `invert_wave:`
   opt. Pieces which have explicit inversion need to swap all 0s for 1s
-  and visa versa.
+  and vice versa.
 * The `res:` opt for `rrand` and `rdist` has been renamed to `step:` to
   avoid confusion with the resonance opt for cutoff filters.
 * Rename `pitch_ratio` to `pitch_to_ratio` to keep in line with other
   similar fns such as `midi_to_hz`.
 
 
-### New
+### New Fns
 
 * New thread-local (i.e. live_loop local) counter system via fns `tick`
   and `look`.
@@ -89,7 +205,7 @@ Enjoy this release and happy [Algoraving!](http://algorave.com)
   `tick` to create sophisticated polyrhythms.
 * New fns `use_cue_logging` and `with_cue_logging` for enabling and
   disabling the logging of `cue` messages.
-* It is now possible to set the block type in the Minecraft API.
+
 
 
 ### GUI  
@@ -156,12 +272,13 @@ Enjoy this release and happy [Algoraving!](http://algorave.com)
   duration of that call.
 * Teach `chord` the opt `num_octaves` to enable the easy creation of
   arpeggios.
+* It is now possible to set the block type in the Minecraft API.
 
 
 ### Bug Fixes
 
 * Fix bug in `with_sample_pack_as` to now correctly accept a block.
-* `mx_surface_teleport` no longer throws an error.
+* `mc_surface_teleport` no longer throws an error.
 * `Array#shuffle` now works correctly with the random seeds for
   deterministic behaviour.
 * Fix broken behaviour with multiple nested calls to `*_sample_bpm`.
@@ -200,7 +317,7 @@ most powerful text editor in use by wizard programmers today.
 
 ### New
 
-1* Support for programming [Minecraft Pi Edition](http://pi.minecraft.net).
+* Support for programming [Minecraft Pi Edition](http://pi.minecraft.net).
 * `sync` now accepts multiple cue ids and will sync on the first matching id.
 * New fn `pitch_ratio` for converting a midi note to a frequency
   ratio. Useful for tuning samples.
@@ -276,9 +393,9 @@ fun!
 
 * New fn `spread` for creating rings of Euclidean distributions. Great
   for quickly creating interesting rhythms.
-* GUI now automatically appends a `:` to the FX param autocomplete list  
+* GUI now automatically appends a `:` to the FX opt autocomplete list  
 * Synths and FX now raise an exception if any of their non-modulatable
-  params are modulated. This is disabled when the pref 'check synth
+  opts are modulated. This is disabled when the pref 'check synth
   args' is unchecked.
 * GUI now renders pretty UTF-8 `└─` `├─` characters when printing in the log
   on RP.
@@ -291,7 +408,7 @@ fun!
 * New Synth `:growl`, a deep rumbling growl.
 * Sampler synths now sport built-in `rlpf` and `normaliser` FX. These
   are disabled by default (i.e. won't affect sound of the sample) and
-  can by enabled via the new `cutoff:`, `res:` and `norm:` params.
+  can by enabled via the new `cutoff:`, `res:` and `norm:` opts.
 
 ### Bug Fixes
 
@@ -513,17 +630,17 @@ Riley, Jeremy Weatherford and Joseph Wilk.
 
 ### Synths, Samples & FX
 * New samples (bass drums, snares and loops)
-* Allow `mod_range` param to have negative values (for oscillating with lower notes)
+* Allow `mod_range:` opt to have negative values (for oscillating with lower notes)
 * Change slide mechanism to default to linear sliding with support for changing the curve type. All modifiable args now have corresponding  `_slide_shape` and `_slide_curve` args.
-* Improve TB303 synth - now supports separate cutoff ADSR envelopes. New args:
-  - `cutoff_attack`,
-  - `cutoff_sustain`,
-  - `cutoff_decay`,
-  - `cutoff_release`,
-  - `cutoff_min_slide`,
-  - `cutoff_attack_level`,
-  - `cutoff_sustain_level`,
-  - `cutoff_env_curve`
+* Improve TB303 synth - now supports separate cutoff ADSR envelopes. New opts:
+  - `cutoff_attack:`,
+  - `cutoff_sustain:`,
+  - `cutoff_decay:`,
+  - `cutoff_release:`,
+  - `cutoff_min_slide:`,
+  - `cutoff_attack_level:`,
+  - `cutoff_sustain_level:`,
+  - `cutoff_env_curve:`
 
 
 ## Version 2.0.1

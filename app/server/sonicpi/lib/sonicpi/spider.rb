@@ -53,8 +53,10 @@ module SonicPi
     include ActiveSupport
 
     def initialize(hostname, port, msg_queue, max_concurrent_synths, user_methods)
+#      @git_hash = __extract_git_hash
+#      gh_short = @git_hash ? "-#{@git_hash[0, 5]}" : ""
       @settings = Config::Settings.new(user_settings_path)
-      @version = Version.new(2, 6, 0)
+      @version = Version.new(2, 7, 0)
       @server_version = __server_version
       @life_hooks = LifeCycleHooks.new
       @msg_queue = msg_queue
@@ -68,13 +70,14 @@ module SonicPi
       @named_subthreads = {}
       @job_subthread_mutex = Mutex.new
       @user_jobs = Jobs.new
-      @random_generator = Random.new(0)
       @sync_real_sleep_time = 0.05
       @user_methods = user_methods
       @run_start_time = 0
       @session_id = SecureRandom.uuid
       @snippets = {}
 
+      @gui_heartbeats = {}
+      @gui_last_heartbeat = nil
       @gitsave = GitSave.new(project_path)
 
       @event_t = Thread.new do
@@ -150,6 +153,24 @@ module SonicPi
           completion = lines.join
 
           __add_completion(key, completion, point_line, point_index)
+        end
+      end
+    end
+
+    def __gui_heartbeat(id)
+      t = Time.now
+      @gui_heartbeats[id] = t
+      @gui_last_heartbeat = t
+    end
+
+    def __extract_git_hash
+      head_path = root_path + "/.git/HEAD"
+      if File.exists? head_path
+        ref = File.readlines(head_path).first
+        ref_path = root_path + "/.git/" + ref[5..-1]
+        ref_path = ref_path.strip
+        if File.exists? ref_path
+          return File.readlines(ref_path).first
         end
       end
     end
@@ -338,11 +359,20 @@ module SonicPi
       end
     end
 
-    def __error(e)
+    def __error(e, m=nil)
       line = __extract_line_of_error(e)
       err_msg = e.message
-      err_msg = "[Line #{line}] \n #{err_msg}" if line != -1
-      @msg_queue.push({type: :error, val: err_msg, backtrace: e.backtrace, jobid: __current_job_id, jobinfo: __current_job_info, line: line})
+      info = __current_job_info
+      err_msg.gsub!(/for #<SonicPiSpiderUser[a-z0-9:]+>/, '')
+      res = ""
+      if line != -1
+        res = res + "[#{info[:workspace]}, line #{line}]"
+      else
+        res = res + "[#{info[:workspace]}]"
+      end
+      res = res + "\n" + m if m
+      res = res + "\n #{err_msg}"
+      @msg_queue.push({type: :error, val: res, backtrace: e.backtrace, jobid: __current_job_id, jobinfo: __current_job_info, line: line})
     end
 
     def __current_run_time
@@ -362,7 +392,7 @@ module SonicPi
     end
 
     def __current_job_info
-      Thread.current.thread_variable_get :sonic_pi_spider_job_info
+      Thread.current.thread_variable_get :sonic_pi_spider_job_info || {}
     end
 
     def __sync_msg_command(msg)
@@ -542,6 +572,44 @@ module SonicPi
 
     end
 
+    def __toggle_comment(workspace_id, buf, start_line, finish_line, point_line, point_index)
+      id = workspace_id.to_s
+      indented_linex = ""
+      buf_lines = buf.lines.to_a
+      # Check to see if we need to comment or uncomment:
+      # If all lines in selection start with a # (after whitespace)
+      # or are whitespace we need to uncomment.
+      # Otherwise comment
+      lines = buf_lines[start_line..finish_line]
+
+      if(lines.all?{|el| el.match(/^\s*#.*/) || el.match(/^\s*$/)})
+        # need to uncomment
+        lines = lines.map do |l|
+          m = l.match(/^(\s*)#+[ ]?(.*)/)
+          if m
+            m[1] + m[2] + "\n"
+          else
+            l
+          end
+        end
+
+      else
+        # need to comment
+        # find shortest amount of whitespace at beginning of line
+        ws = Float::INFINITY
+        lines.each do |l|
+          m = l.match(/^(\s*).*/)
+          ws = m[1].size if m && m[1].size < ws unless l.match(/^(\s*)$/)
+        end
+
+        lines.each do |l|
+          l[ws] = "# #{l[ws]}" unless l.match(/^(\s*)$/)
+        end
+      end
+
+      @msg_queue.push({type: "replace-lines", buffer_id: id, val: lines.join, start_line: start_line, finish_line: finish_line, point_line: point_line, point_index: point_index})
+    end
+
     def __beautify_buffer(id, buf, line, index, first_line)
       id = id.to_s
       buf = buf + "\n"
@@ -622,12 +690,13 @@ module SonicPi
       firstline = 1
       firstline -= code.split(/\r?\n/).count{|l| l.include? "#__nosave__"}
       start_t_prom = Promise.new
-
+      info[:workspace] = 'eval' unless info[:workspace]
       job = Thread.new do
         Thread.current.priority = 20
         begin
 
           num_running_jobs = reg_job(id, Thread.current)
+          Thread.current.thread_variable_set :sonic_pi_spider_thread, true
           Thread.current.thread_variable_set :sonic_pi_thread_group, "job-#{id}"
           Thread.current.thread_variable_set :sonic_pi_spider_arg_bpm_scaling, true
           Thread.current.thread_variable_set :sonic_pi_spider_sleep_mul, 1.0
@@ -639,8 +708,9 @@ module SonicPi
           Thread.current.thread_variable_set :sonic_pi_spider_no_kill_mutex, Mutex.new
           Thread.current.thread_variable_set :sonic_pi_spider_delayed_blocks, []
           Thread.current.thread_variable_set :sonic_pi_spider_delayed_messages, []
-          Thread.current.thread_variable_set :sonic_pi_spider_random_generator, Random.new(0)
-          Thread.current.thread_variable_set :sonic_pi_spider_new_thread_random_generator, Random.new(0)
+          Thread.current.thread_variable_set :sonic_pi_spider_random_gen_seed, 0
+          Thread.current.thread_variable_set :sonic_pi_spider_random_gen_idx, 0
+          Thread.current.thread_variable_set :sonic_pi_spider_new_thread_random_gen_idx, 0
           @msg_queue.push({type: :job, jobid: id, action: :start, jobinfo: info})
           @life_hooks.init(id, {:thread => Thread.current})
           now = Time.now
@@ -650,7 +720,8 @@ module SonicPi
           @run_start_time = now if num_running_jobs == 1
           __info "Starting run #{id}"
           code = PreParser.preparse(code)
-          eval(code, nil, info[:workspace] || 'eval', firstline)
+
+          eval(code, nil, info[:workspace], firstline)
           __schedule_delayed_blocks_and_messages!
         rescue Stop => e
           __no_kill_block do
@@ -662,7 +733,7 @@ module SonicPi
             error_line = ""
             if line
               line = line.to_i
-              err_msg = "[Line #{line}] \n #{message}"
+              err_msg = "[#{info[:workspace]}, line #{line}] \n #{message}"
               error_line = code.lines.to_a[line + 1] ||  ""
             else
               line = -1
