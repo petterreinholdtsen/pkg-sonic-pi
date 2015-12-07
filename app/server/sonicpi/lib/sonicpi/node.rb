@@ -61,7 +61,7 @@ module SonicPi
       prom = nil
       @state_change_sem.synchronize do
         if @state != :pending
-          return true
+          return self
         else
           prom = Promise.new
           cb = lambda do
@@ -75,17 +75,17 @@ module SonicPi
     end
 
     def kill(now=false)
-      @comms.kill_node @id, now
+      @comms.kill_node self, now
       self
     end
 
     def pause(now=false)
-      @comms.node_pause @id, now
+      @comms.node_pause self, now
       self
     end
 
     def run(now=false)
-      @comms.node_run @id, now
+      @comms.node_run self, now
       self
     end
 
@@ -94,7 +94,7 @@ module SonicPi
       if Thread.current.thread_variable_get(:sonic_pi_mod_sound_check_synth_args)
         @info.validate!(args_h) if @info
       end
-      @comms.node_ctl @id, args_h
+      @comms.node_ctl self, args_h
       self
     end
 
@@ -135,7 +135,7 @@ module SonicPi
     end
 
     def inspect
-      to_s
+      "<#{@id}>"
     end
 
     def blank_node?
@@ -149,10 +149,7 @@ module SonicPi
         @on_destroyed_callbacks.each{|cb| cb.call}
         @on_destroyed_callbacks = []
       rescue Exception => e
-        Kernel.puts "Exception in on destroyed callbacks: #{e.message}"
-        e.backtrace.each do |b|
-          Kernel.puts b
-        end
+        log_exception e, "in on destroyed callbacks"
       end
     end
 
@@ -161,10 +158,7 @@ module SonicPi
         @on_started_callbacks.each{|cb| cb.call}
         @on_started_callbacks = []
       rescue Exception => e
-        Kernel.puts "Exception in on started callbacks: #{e.message}"
-        e.backtrace.each do |b|
-          Kernel.puts b
-        end
+        log_exception e, "in on started callbacks"
       end
     end
 

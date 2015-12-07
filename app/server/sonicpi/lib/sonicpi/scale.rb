@@ -10,13 +10,14 @@
 # and distribution of modified versions of this work as long as this
 # notice is included.
 #++
+require_relative 'wrappingarray'
 
 module SonicPi
-  class Scale
+  class Scale < WrappingArray
     # Ported from Overtone: https://github.com/overtone/overtone/blob/master/src/overtone/music/pitch.clj
 
-    include Enumerable
-    include Comparable
+    class InvalidScaleError < ArgumentError; end ;
+    class InvalidDegreeError < ArgumentError; end ;
 
     SCALE = lambda{
       ionian_sequence     = [2, 2, 1, 2, 2, 2, 1]
@@ -95,13 +96,43 @@ module SonicPi
            chinese:            [4, 2, 1, 4, 1],
            lydian_minor:       [2, 2, 2, 1, 1, 2, 2]}}.call
 
+    # Zero indexed for CS compatibility
+    DEGREES = {:i    => 0,
+               :ii   => 1,
+               :iii  => 2,
+               :iv   => 3,
+               :v    => 4,
+               :vi   => 5,
+               :vii  => 6,
+               :viii => 7,
+               :ix   => 8,
+               :x    => 9,
+               :xi   => 10,
+               :xii  => 11}
+
+    def self.resolve_degree_index(degree)
+      if idx = DEGREES[degree]
+        return idx
+      elsif degree.is_a? Numeric
+        return degree - 1
+      else
+        raise InvalidDegreeError, "Invalid scale degree #{degree.inspect}, expecting #{DEGREES.keys.join ','} or a number"
+      end
+    end
+
+
+    def self.resolve_degree(degree, tonic, scale)
+      scale = Scale.new(tonic, scale)
+      index = resolve_degree_index(degree)
+      scale.notes[index]
+    end
 
     attr_reader :name, :tonic, :num_octaves, :notes
 
     def initialize(tonic, name, num_octaves=1)
       name = name.to_sym
       intervals = SCALE[name]
-      raise "Unknown scale name: #{name.inspect}" unless intervals
+      raise InvalidScaleError, "Unknown scale name: #{name.inspect}" unless intervals
       intervals = intervals * num_octaves
       current = Note.resolve_midi_note(tonic)
       res = [current]
@@ -114,6 +145,7 @@ module SonicPi
       @tonic = tonic
       @num_octaves = num_octaves
       @notes = res
+      super(res)
     end
 
     def to_s
@@ -123,18 +155,5 @@ module SonicPi
     def inspect
       to_s
     end
-
-    def to_a
-      @notes
-    end
-
-    def each &block
-      @notes.each(&block)
-    end
-
-    def <=> other
-      @notes <=> other.to_a
-    end
-
   end
 end

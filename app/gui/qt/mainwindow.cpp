@@ -15,8 +15,10 @@
 #include <iostream>
 #include <math.h>
 #include <sstream>
+#include <fstream>
 
 // Qt stuff
+#include <QDir>
 #include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
@@ -33,6 +35,7 @@
 #include <QSize>
 #include <QStatusBar>
 #include <QTextEdit>
+#include <QTextBrowser>
 #include <QToolBar>
 #include <QProcess>
 #include <QFont>
@@ -50,11 +53,19 @@
 #include <QRadioButton>
 #include <QCheckBox>
 #include <QScrollArea>
+#include <QShortcut>
+#include <QToolButton>
+#include <QSettings>
+#include <QScrollBar>
 
 // QScintilla stuff
 #include <Qsci/qsciapis.h>
 #include <Qsci/qsciscintilla.h>
-#include <sonicpilexer.h>
+#include <Qsci/qscicommandset.h>
+
+#include "sonicpilexer.h"
+#include "sonicpiapis.h"
+#include "sonicpiscintilla.h"
 
 // OSC stuff
 #include "oscpkt.hh"
@@ -63,6 +74,7 @@
 // OS specific stuff
 #if defined(Q_OS_WIN)
   #include <QtConcurrent/QtConcurrentRun>
+  void sleep(int x) { Sleep((x)*1000); }
 #elif defined(Q_OS_MAC)
   #include <QtConcurrent/QtConcurrentRun>
 #else
@@ -81,6 +93,7 @@ MainWindow::MainWindow(QApplication &app, QMainWindow* splash) {
 MainWindow::MainWindow(QApplication &app, QSplashScreen &splash) {
 #endif
   this->setUnifiedTitleAndToolBarOnMac(true);
+  this->setWindowIcon(QIcon(":images/icon-smaller.png"));
 
   is_recording = false;
   server_started = false;
@@ -95,25 +108,55 @@ MainWindow::MainWindow(QApplication &app, QSplashScreen &splash) {
   serverProcess = new QProcess();
 
 #if defined(Q_OS_WIN)
-  QString prg_path = QCoreApplication::applicationDirPath() + "\\..\\..\\server\\native\\osx\\ruby\\bin\\ruby";
+  QString prg_path = "ruby.exe";
+  QString native_path = QCoreApplication::applicationDirPath() + "\\..\\..\\..\\server\\native\\windows\\bin\\ruby.exe";
+  std::ifstream testfile(native_path.toUtf8().constData());
+  if (testfile) {
+    prg_path = native_path;
+    testfile.close();
+  }
+
+  QString prg_arg = QCoreApplication::applicationDirPath() + "/../../../server/bin/sonic-pi-server.rb";
+  QString sample_path = QCoreApplication::applicationDirPath() + "/../../../../etc/samples";
 #elif defined(Q_OS_MAC)
   QString prg_path = QCoreApplication::applicationDirPath() + "/../../server/native/osx/ruby/bin/ruby";
+  QString prg_arg = QCoreApplication::applicationDirPath() + "/../../server/bin/sonic-pi-server.rb";
+  QString sample_path = QCoreApplication::applicationDirPath() + "/../../etc/samples";
 #else
   //assuming Raspberry Pi
   QString prg_path = "ruby";
+  QString prg_arg = QCoreApplication::applicationDirPath() + "/../../server/bin/sonic-pi-server.rb";
+  QString sample_path = QCoreApplication::applicationDirPath() + "/../../../etc/samples";
 #endif
 
-  QString prg_arg = QCoreApplication::applicationDirPath() + "/../../server/bin/sonic-pi-server.rb";
   prg_arg = QDir::toNativeSeparators(prg_arg);
 
   QStringList args;
   args << prg_arg;
 
   std::cout << prg_path.toStdString() << " " << prg_arg.toStdString() << std::endl;
-  serverProcess->setStandardErrorFile("/tmp/sonic-pi-error");
-  serverProcess->setStandardOutputFile("/tmp/sonic-pi-output");
+
+  QString sp_user_path = QDir::homePath() + QDir::separator() + ".sonic-pi";
+  QString log_path =  sp_user_path + QDir::separator() + "log";
+
+#if defined(Q_OS_WIN)
+  stdlog.open(QString(log_path + "/stdout.log").toStdString());
+  std::cout.rdbuf(stdlog.rdbuf());
+#endif
+
+  QDir().mkdir(sp_user_path);
+  QDir().mkdir(log_path);
+  QString sp_error_log_path = log_path + QDir::separator() + "/errors.log";
+  QString sp_output_log_path = log_path + QDir::separator() + "/output.log";
+  serverProcess->setStandardErrorFile(sp_error_log_path);
+  serverProcess->setStandardOutputFile(sp_output_log_path);
   serverProcess->start(prg_path, args);
-  serverProcess->waitForStarted();
+  if (!serverProcess->waitForStarted()) {
+    QMessageBox::critical(this, tr("Where is ruby?"), tr("ruby could not be started, is it installed and in your PATH?"), QMessageBox::Abort);
+    QTimer::singleShot(0, this, SLOT(close()));
+    cont_listening_for_osc = false;
+    return;
+  }
 
   std::cerr << "started..." << serverProcess->state() << std::endl;
 
@@ -125,23 +168,18 @@ MainWindow::MainWindow(QApplication &app, QSplashScreen &splash) {
   for(int ws = 0; ws < workspace_max; ws++) {
 	  std::string s;
 
-	  workspaces[ws] = new QsciScintilla;
+	  workspaces[ws] = new SonicPiScintilla;
 	  QString w = QString("Workspace %1").arg(QString::number(ws + 1));
 	  tabs->addTab(workspaces[ws], w);
   }
 
   lexer = new SonicPiLexer;
-  lexer->setAutoIndentStyle(QsciScintilla::AiMaintain);
+  lexer->setAutoIndentStyle(SonicPiScintilla::AiMaintain);
 
   // Autocompletion stuff
-  QsciAPIs* api = new QsciAPIs(lexer);
-  QStringList api_names;
-  // yes, really
-  #include "api_list.h"
-  for (int api_iter = 0; api_iter < api_names.size(); ++api_iter) {
-	  api->add(api_names.at(api_iter));
-  }
-  api->prepare();
+  autocomplete = new SonicPiAPIs(lexer);
+  autocomplete->loadSamples(sample_path);
+
   QFont font("Monospace");
   font.setStyleHint(QFont::Monospace);
   lexer->setDefaultFont(font);
@@ -151,6 +189,11 @@ MainWindow::MainWindow(QApplication &app, QSplashScreen &splash) {
   outputPane = new QTextEdit;
   errorPane = new QTextEdit;
 
+  // adding universal shortcuts to outputpane seems to
+  // steal events from doc system!?
+  // addUniversalCopyShortcuts(outputPane);
+
+  addUniversalCopyShortcuts(errorPane);
   outputPane->setReadOnly(true);
   errorPane->setReadOnly(true);
   outputPane->setLineWrapMode(QTextEdit::NoWrap);
@@ -176,46 +219,56 @@ MainWindow::MainWindow(QApplication &app, QSplashScreen &splash) {
   prefsWidget->setWidget(prefsCentral);
   addDockWidget(Qt::RightDockWidgetArea, prefsWidget);
   prefsWidget->hide();
+  prefsWidget->setObjectName("prefs");
 
   outputWidget = new QDockWidget(tr("Log"), this);
   outputWidget->setFeatures(QDockWidget::NoDockWidgetFeatures);
   outputWidget->setAllowedAreas(Qt::RightDockWidgetArea);
   outputWidget->setWidget(outputPane);
   addDockWidget(Qt::RightDockWidgetArea, outputWidget);
+  outputWidget->setObjectName("output");
 
   docsCentral = new QTabWidget;
   docsCentral->setTabsClosable(false);
   docsCentral->setMovable(false);
   docsCentral->setTabPosition(QTabWidget::West);
+
+  docPane = new QTextBrowser;
+  docPane->setOpenExternalLinks(true);
+  QString style = "QTextBrowser { padding-left:10; padding-top:10; padding-bottom:10; padding-right:10 ; background:white;}";
+  docPane->setStyleSheet(style);
+
+  QShortcut *up = new QShortcut(ctrlKey('p'), docPane);
+  up->setContext(Qt::WidgetShortcut);
+  connect(up, SIGNAL(activated()), this, SLOT(docScrollUp()));
+  QShortcut *down = new QShortcut(ctrlKey('n'), docPane);
+  down->setContext(Qt::WidgetShortcut);
+  connect(down, SIGNAL(activated()), this, SLOT(docScrollDown()));
+
+
+#if defined(Q_OS_WIN)
+    docPane->setHtml("<center><img src=\":/images/logo.png\" height=\"298\" width=\"365\"></center>");
+#elif defined(Q_OS_MAC)
+    docPane->setHtml("<center><img src=\":/images/logo.png\" height=\"298\" width=\"365\"></center>");
+#else
+  //assuming Raspberry Pi
+  //use smaller logo
+    docPane->setHtml("<center><img src=\":/images/logo-smaller.png\" height=\"161\" width=\"197\"></center>");
+#endif
+
+
+  addUniversalCopyShortcuts(docPane);
+
+  QHBoxLayout *docLayout = new QHBoxLayout;
+  docLayout->addWidget(docsCentral);
+  docLayout->addWidget(docPane, 1);
+  QWidget *docW = new QWidget();
+  docW->setLayout(docLayout);
+
   docWidget = new QDockWidget("Help", this);
   docWidget->setAllowedAreas(Qt::BottomDockWidgetArea);
-  docWidget->setWidget(docsCentral);
-
-  tutorialDocPane = new QTextEdit;
-  tutorialDocPane->setReadOnly(true);
-  QString style = "QTextEdit { padding-left:10; padding-top:10; padding-bottom:10; padding-right:10 ; background:white;}";
-  tutorialDocPane->setStyleSheet(style);
-  tutorialDocPane->setHtml("<center><img src=\":/images/logo.png\" height=\"298\" width=\"365\"></center>");
-
-  langDocPane = new QTextEdit;
-  langDocPane->setReadOnly(true);
-  langDocPane->setStyleSheet(style);
-
-  synthsDocPane = new QTextEdit;
-  synthsDocPane->setReadOnly(true);
-  synthsDocPane->setStyleSheet(style);
-
-  fxDocPane = new QTextEdit;
-  fxDocPane->setReadOnly(true);
-  fxDocPane->setStyleSheet(style);
-
-  samplesDocPane = new QTextEdit;
-  samplesDocPane->setReadOnly(true);
-  samplesDocPane->setStyleSheet(style);
-
-  examplesDocPane = new QTextEdit;
-  examplesDocPane->setReadOnly(true);
-  examplesDocPane->setStyleSheet(style);
+  docWidget->setWidget(docW);
+  docWidget->setObjectName("help");
 
   addDockWidget(Qt::BottomDockWidgetArea, docWidget);
   docWidget->hide();
@@ -243,7 +296,8 @@ MainWindow::MainWindow(QApplication &app, QSplashScreen &splash) {
 
   connect(&app, SIGNAL( aboutToQuit() ), this, SLOT( onExitCleanup() ) );
 
-  while (!server_started && cont_listening_for_osc) {
+  int timeout = 30;
+  while (!server_started && cont_listening_for_osc && timeout-- > 0) {
     sleep(1);
     std::cout << "Waiting for server..." << std::endl;
     if(osc_incoming_port_open) {
@@ -251,6 +305,15 @@ MainWindow::MainWindow(QApplication &app, QSplashScreen &splash) {
       msg.pushStr("QtClient/1/hello");
       sendOSC(msg);
     }
+  }
+  if (!server_started) {
+    if (!startup_error_reported) {
+      QMessageBox::critical(this, QString("Server didn't start"), QString("Failed to start server, please check ") + log_path, QMessageBox::Abort);
+      QTimer::singleShot(0, this, SLOT(close()));
+      cont_listening_for_osc = false;
+    }
+
+    return;
   }
 
   loadWorkspaces();
@@ -261,12 +324,12 @@ MainWindow::MainWindow(QApplication &app, QSplashScreen &splash) {
   initDocsWindow();
 
 
-  infoPane = new QTextEdit;
-  infoPane->setReadOnly(true);
-  infoPane->setFixedSize(550, 650);
+  infoPane = new QTextBrowser;
+  addUniversalCopyShortcuts(infoPane);
+  infoPane->setOpenExternalLinks(true);
+  infoPane->setFixedSize(600, 615);
   QString html;
-
-  infoPane->setHtml("<center><img src=\":/images/logo.png\" height=\"298\" width=\"365\"><pre><font size=\"4\"><font color=\"DeepPink\">A Sound Synthesiser<br>for Live Coding</font><br><br>Designed and developed by Sam Aaron<br>in Cambridge, England<br><br><font color=\"DeepPink\">http://sonic-pi.net</font><br><br>For the latest updates follow<br><font color=\"DeepPink\">@sonic_pi<br></font></font></pre><h2><pre><font color=\"#3C3C3C\"><pre>music_as <font color=\"DeepPink\">:code</font><br>code_as <font color=\"DeepPink\">:art</font></pre></h2><pre><font size=\"4\"><br>v2.0.1</font></pre></center>");
+  infoPane->setHtml("<center><img src=\":/images/logo-smaller.png\" height=\"268\" width=\"328\"><pre><font size=\"4\"><font color=\"DeepPink\">A Sound Synthesiser<br>for Live Coding</font><br><br>Designed and developed by Sam Aaron<br>in Cambridge, England<br><br><font color=\"DeepPink\"><a href=\"http://sonic-pi.net\" style=\"text-decoration: none; color:DeepPink\">http://sonic-pi.net</a></font><br><br>For the latest updates follow<br><font color=\"DeepPink\"><a href=\"http://twitter.com/sonic_pi\" style=\"text-decoration: none; color:DeepPink;\">@sonic_pi</a><br></font></font></pre><h2><pre><font color=\"#3C3C3C\"><pre>music_as <font color=\"DeepPink\">:code</font><br>code_as <font color=\"DeepPink\">:art</font></pre></h2><pre><font size=\"4\"><br>v2.1</font></pre></center>");
 
 
 #if defined(Q_OS_MAC)
@@ -280,18 +343,20 @@ MainWindow::MainWindow(QApplication &app, QSplashScreen &splash) {
   if(settings.value("first_time", 1).toInt() == 1) {
     QTextEdit* startupPane = new QTextEdit;
     startupPane->setReadOnly(true);
-    startupPane->setFixedSize(550, 700);
+    startupPane->setFixedSize(600, 615);
+    addUniversalCopyShortcuts(startupPane);
     QString html;
 
 
 
-    startupPane->setHtml("<center><img src=\":/images/logo.png\" height=\"298\" width=\"365\"></center><center><pre><font size=\"4\"><font color=\"DeepPink\">Welcome!</font><br><br>This is Sonic Pi<br>the live coding music environment<br><br>To get started please follow the tutorial<br> in the help system below<br>(which you can always access via the Help button)<br><br>Remember...<br>with live coding<br>there are no mistakes<br>only opportunities<font color=\"DeepPink\"><br><br>Have fun and share your code<br>for others to jam with</font></font></center>");
+    startupPane->setHtml("<center><img src=\":/images/logo-smaller.png\" height=\"268\" width=\"328\"></center><center><pre><font size=\"4\"><font color=\"DeepPink\">Welcome!</font><br><br>This is Sonic Pi<br>the live coding music environment<br><br>To get started please follow the tutorial<br> in the help system below<br>(which you can always access via the Help button)<br><br>Remember...<br>with live coding<br>there are no mistakes<br>only opportunities<font color=\"DeepPink\"><br><br>Have fun and share your code<br>for others to jam with</font></font></center>");
     docWidget->show();
     startupPane->show();
   }
 
   // Main widget for info
   infoWidg = new QWidget;
+  infoWidg->setWindowIcon(QIcon(":images/icon-smaller.png"));
 
 
   // Changelog
@@ -301,39 +366,58 @@ MainWindow::MainWindow(QApplication &app, QSplashScreen &splash) {
   QString s;
   QTextStream st(&file);
   s.append(st.readAll());
-  QTextEdit *historyT = new QTextEdit;
-  historyT->setReadOnly(true);
+  QTextBrowser *historyT = new QTextBrowser;
+  addUniversalCopyShortcuts(historyT);
+  historyT->setOpenExternalLinks(true);
   historyT->setHtml(s);
 
-  //Contributors
-  QFile file2(":/info/CONTRIBUTORS.html");
+  //Core Team
+  QFile file2(":/info/CORETEAM.html");
   if(!file2.open(QFile::ReadOnly | QFile::Text)) {
   }
   QString s2;
   QTextStream st2(&file2);
   s2.append(st2.readAll());
-  QTextEdit *contributorsT = new QTextEdit;
-  contributorsT->setReadOnly(true);
-  contributorsT->setHtml(s2);
+  QTextBrowser *coreteamT = new QTextBrowser;
+  addUniversalCopyShortcuts(coreteamT);
+  coreteamT->setOpenExternalLinks(true);
+  coreteamT->setHtml(s2);
 
-  //Community
-  QFile file3(":/info/COMMUNITY.html");
+
+  //Contributors
+  QFile file3(":/info/CONTRIBUTORS.html");
   if(!file3.open(QFile::ReadOnly | QFile::Text)) {
   }
   QString s3;
   QTextStream st3(&file3);
   s3.append(st3.readAll());
-  QTextEdit *communityT = new QTextEdit;
-  communityT->setReadOnly(true);
-  communityT->setHtml(s3);
+  QTextBrowser *contributorsT = new QTextBrowser;
+  addUniversalCopyShortcuts(contributorsT);
+  contributorsT->setOpenExternalLinks(true);
+  contributorsT->setHtml(s3);
+
+  //Community
+  QFile file4(":/info/COMMUNITY.html");
+  if(!file4.open(QFile::ReadOnly | QFile::Text)) {
+  }
+  QString s4;
+  QTextStream st4(&file4);
+  s4.append(st4.readAll());
+  QTextBrowser *communityT = new QTextBrowser;
+  addUniversalCopyShortcuts(communityT);
+  communityT->setOpenExternalLinks(true);
+  communityT->setHtml(s4);
+
+  currentLine = 0; currentIndex = 0;
 
 
   // Tabs
   QTabWidget *infoTabs = new QTabWidget(this);
   infoTabs->addTab(infoPane, "About");
-  infoTabs->addTab(historyT, "History");
+  infoTabs->addTab(coreteamT, "Core Team");
   infoTabs->addTab(contributorsT, "Contributors");
   infoTabs->addTab(communityT, "Community");
+  infoTabs->addTab(historyT, "History");
   infoTabs->setTabPosition(QTabWidget::South);
 
   QBoxLayout *infoLayout = new QBoxLayout(QBoxLayout::LeftToRight);
@@ -348,8 +432,6 @@ MainWindow::MainWindow(QApplication &app, QSplashScreen &splash) {
   connect(closeInfoAct, SIGNAL(triggered()), this, SLOT(about()));
   infoWidg->addAction(closeInfoAct);
   this->showNormal();
-
-
 }
 
 void MainWindow::serverError(QProcess::ProcessError error) {
@@ -365,12 +447,48 @@ void MainWindow::serverFinished(int exitCode, QProcess::ExitStatus exitStatus) {
   std::cout << serverProcess->readAllStandardOutput().data() << std::endl;
 }
 
+void MainWindow::update_mixer_invert_stereo() {
+  if(mixer_invert_stereo->isChecked())
+    {
+      mixerInvertStereo();
+    } else {
+    mixerStandardStereo();
+  }
+}
+
+void MainWindow::update_mixer_force_mono() {
+  if(mixer_force_mono->isChecked())
+    {
+      mixerMonoMode();
+    } else {
+    mixerStereoMode();
+  }
+}
+
 void MainWindow::initPrefsWindow() {
 
   QGridLayout *grid = new QGridLayout;
 
-  QGroupBox *volBox = new QGroupBox(tr("Raspberry Pi Settings"));
+  QGroupBox *volBox = new QGroupBox(tr("Raspberry Pi System Volume"));
   volBox->setToolTip("Use this slider to change the system volume of your Raspberry Pi");
+
+  QGroupBox *advancedAudioBox = new QGroupBox(tr("Studio Settings"));
+  advancedAudioBox->setToolTip("Advanced audio settings for working with external PA systems when performing with Sonic Pi");
+  mixer_invert_stereo = new QCheckBox("Invert Stereo");
+  connect(mixer_invert_stereo, SIGNAL(clicked()), this, SLOT(update_mixer_invert_stereo()));
+  mixer_force_mono = new QCheckBox("Force Mono");
+  connect(mixer_force_mono, SIGNAL(clicked()), this, SLOT(update_mixer_force_mono()));
+
+
+  QVBoxLayout *advanced_audio_box_layout = new QVBoxLayout;
+  advanced_audio_box_layout->addWidget(mixer_invert_stereo);
+  advanced_audio_box_layout->addWidget(mixer_force_mono);
+  // audio_box->addWidget(radio2);
+  // audio_box->addWidget(radio3);
+  // audio_box->addStretch(1);
+  advancedAudioBox->setLayout(advanced_audio_box_layout);
+
+
   QGroupBox *audioOutputBox = new QGroupBox(tr("Force Audio Output"));
   audioOutputBox->setToolTip("Your Raspberry Pi has two forms of audio output. \nFirstly, there is the headphone jack of the Raspberry Pi itself. \nSecondly, some HDMI monitors/TVs support audio through the HDMI port. \nUse these buttons to force the output to the one you want. \nFor example, if you have headphones connected to your Raspberry Pi, choose 'Headphones'. ");
   QRadioButton *radio1 = new QRadioButton(tr("&Default"));
@@ -408,14 +526,118 @@ void MainWindow::initPrefsWindow() {
   debug_box->setLayout(debug_box_layout);
 
 #if defined(Q_OS_LINUX)
-  grid->addWidget(audioOutputBox, 0, 0);
-  grid->addWidget(volBox, 0, 1);
+  grid->addWidget(audioOutputBox, 1, 0);
+  grid->addWidget(volBox, 1, 1);
 #endif
-  grid->addWidget(debug_box, 1, 1);
+  grid->addWidget(debug_box, 0, 1);
+  grid->addWidget(advancedAudioBox, 0, 0);
   prefsCentral->setLayout(grid);
 }
 
-void MainWindow::initWorkspace(QsciScintilla* ws) {
+ void MainWindow::addOtherKeyBinding(QSettings &qs, int cmd, int key)
+ {
+   QString skey;
+   skey.sprintf("/Scintilla/keymap/c%d/alt", cmd);
+   qs.setValue(skey, key);
+ }
+
+  void MainWindow::addKeyBinding(QSettings &qs, int cmd, int key)
+ {
+   QString skey;
+   skey.sprintf("/Scintilla/keymap/c%d/key", cmd);
+   qs.setValue(skey, key);
+ }
+
+ void MainWindow::initWorkspace(SonicPiScintilla* ws) {
+   ws->standardCommands()->clearKeys();
+   ws->standardCommands()->clearAlternateKeys();
+   QString skey;
+   QSettings settings("Sonic Pi", "Key bindings");
+
+#if defined(Q_OS_MAC)
+   int SPi_CTRL = Qt::META;
+   int SPi_META = Qt::CTRL;
+#else
+   int SPi_CTRL = Qt::CTRL;
+   int SPi_META = Qt::ALT;
+#endif
+
+
+   // basic navigation
+  addKeyBinding(settings, QsciCommand::PageDown, Qt::Key_PageDown);
+  addKeyBinding(settings, QsciCommand::PageUp, Qt::Key_PageUp);
+
+  addKeyBinding(settings, QsciCommand::LineDown, Qt::Key_N | SPi_CTRL);
+  addOtherKeyBinding(settings, QsciCommand::LineDown, Qt::Key_Down);
+  addKeyBinding(settings, QsciCommand::LineDownExtend, Qt::Key_Down | Qt::SHIFT);
+  addKeyBinding(settings, QsciCommand::LineUp, Qt::Key_P | SPi_CTRL);
+  addOtherKeyBinding(settings, QsciCommand::LineUp, Qt::Key_Up);
+  addKeyBinding(settings, QsciCommand::LineUpExtend, Qt::Key_Up | Qt::SHIFT);
+
+  addKeyBinding(settings, QsciCommand::CharRight, Qt::Key_F | SPi_CTRL);
+  addOtherKeyBinding(settings, QsciCommand::CharRight, Qt::Key_Right);
+  addKeyBinding(settings, QsciCommand::CharRightExtend, Qt::Key_Right | Qt::SHIFT);
+
+  addKeyBinding(settings, QsciCommand::WordRight, Qt::Key_F | SPi_CTRL | SPi_META);
+  addOtherKeyBinding(settings, QsciCommand::WordRight, Qt::Key_Right | SPi_CTRL);
+  addKeyBinding(settings, QsciCommand::WordRightExtend, Qt::Key_Right | SPi_CTRL | Qt::SHIFT);
+
+  addKeyBinding(settings, QsciCommand::CharLeft, Qt::Key_B | SPi_CTRL);
+  addOtherKeyBinding(settings, QsciCommand::CharLeft, Qt::Key_Left);
+  addKeyBinding(settings, QsciCommand::CharLeftExtend, Qt::Key_Left | Qt::SHIFT);
+
+  addKeyBinding(settings, QsciCommand::WordLeft, Qt::Key_B | SPi_CTRL | SPi_META);
+  addOtherKeyBinding(settings, QsciCommand::WordLeft, Qt::Key_Left | SPi_CTRL);
+  addKeyBinding(settings, QsciCommand::WordLeftExtend, Qt::Key_Left | SPi_CTRL | Qt::SHIFT);
+
+  addKeyBinding(settings, QsciCommand::Delete, Qt::Key_D | SPi_CTRL);
+  addOtherKeyBinding(settings, QsciCommand::Delete, Qt::Key_Delete);
+
+  addKeyBinding(settings, QsciCommand::DeleteBack, Qt::Key_H | SPi_CTRL);
+  addOtherKeyBinding(settings, QsciCommand::DeleteBack, Qt::Key_Backspace);
+
+  addKeyBinding(settings, QsciCommand::Home, Qt::Key_A | SPi_CTRL);
+  addKeyBinding(settings, QsciCommand::VCHome, Qt::Key_Home);
+  addKeyBinding(settings, QsciCommand::VCHomeExtend, Qt::Key_Home | Qt::SHIFT);
+  addKeyBinding(settings, QsciCommand::DocumentStart, Qt::Key_Home | SPi_CTRL);
+  addKeyBinding(settings, QsciCommand::DocumentStartExtend, Qt::Key_Home | SPi_CTRL | Qt::SHIFT);
+
+  addKeyBinding(settings, QsciCommand::LineEnd, Qt::Key_E | SPi_CTRL);
+  addOtherKeyBinding(settings, QsciCommand::LineEnd, Qt::Key_End);
+  addKeyBinding(settings, QsciCommand::LineEndExtend, Qt::Key_End | Qt::SHIFT);
+  addKeyBinding(settings, QsciCommand::DocumentEnd, Qt::Key_End | SPi_CTRL);
+  addKeyBinding(settings, QsciCommand::DocumentEndExtend, Qt::Key_End | SPi_CTRL | Qt::SHIFT);
+
+  addKeyBinding(settings, QsciCommand::Delete, Qt::Key_D | SPi_CTRL);
+  addKeyBinding(settings, QsciCommand::DeleteLineRight, Qt::Key_K | SPi_CTRL);
+  addKeyBinding(settings, QsciCommand::VerticalCentreCaret, Qt::Key_L | SPi_CTRL);
+
+  addKeyBinding(settings, QsciCommand::Cancel, Qt::Key_Escape);
+  addOtherKeyBinding(settings, QsciCommand::Cancel, Qt::Key_G | SPi_CTRL);
+
+  // tab return
+  addKeyBinding(settings, QsciCommand::Newline, Qt::Key_Return);
+  addKeyBinding(settings, QsciCommand::Tab, Qt::Key_Tab);
+  addKeyBinding(settings, QsciCommand::Backtab, Qt::Key_Tab | Qt::SHIFT);
+
+  // copy paste
+  addKeyBinding(settings, QsciCommand::SelectionCut, Qt::Key_X | SPi_META);
+  addOtherKeyBinding(settings, QsciCommand::SelectionCut, Qt::Key_X | SPi_CTRL);
+  addKeyBinding(settings, QsciCommand::SelectionCopy, Qt::Key_C | SPi_META);
+  addOtherKeyBinding(settings, QsciCommand::SelectionCopy, Qt::Key_C | SPi_CTRL);
+  addKeyBinding(settings, QsciCommand::Paste, Qt::Key_V | SPi_META);
+  addOtherKeyBinding(settings, QsciCommand::Paste, Qt::Key_V | SPi_CTRL);
+  addKeyBinding(settings, QsciCommand::Undo, Qt::Key_Z | SPi_META);
+  addOtherKeyBinding(settings, QsciCommand::Undo, Qt::Key_Z | SPi_CTRL);
+  addKeyBinding(settings, QsciCommand::Redo, Qt::Key_Z | Qt::SHIFT | SPi_META);
+  addOtherKeyBinding(settings, QsciCommand::Redo, Qt::Key_Z | Qt::SHIFT | SPi_CTRL);
+  addKeyBinding(settings, QsciCommand::SelectAll, Qt::Key_A | SPi_META);
+
+  // stop autocompletion
+  addKeyBinding(settings, QsciCommand::Cancel, Qt::Key_Escape);
+
+  ws->standardCommands()->readSettings(settings);
+
   ws->setAutoIndent(true);
   ws->setIndentationsUseTabs(false);
   ws->setBackspaceUnindents(true);
@@ -426,9 +648,9 @@ void MainWindow::initWorkspace(QsciScintilla* ws) {
   ws->setIndentationWidth(2);
   ws->setIndentationGuides(true);
   ws->setIndentationGuidesForegroundColor(QColor("deep pink"));
-  ws->setBraceMatching( QsciScintilla::SloppyBraceMatch);
+  ws->setBraceMatching( SonicPiScintilla::SloppyBraceMatch);
   //TODO: add preference toggle for this:
-  //ws->setFolding(QsciScintilla::CircledTreeFoldStyle, 2);
+  //ws->setFolding(SonicPiScintilla::CircledTreeFoldStyle, 2);
   ws->setCaretLineVisible(true);
   ws->setCaretLineBackgroundColor(QColor("whitesmoke"));
   ws->setFoldMarginColors(QColor("whitesmoke"),QColor("whitesmoke"));
@@ -440,9 +662,8 @@ void MainWindow::initWorkspace(QsciScintilla* ws) {
   ws->setUtf8(true);
   ws->setText("#loading...");
   ws->setLexer(lexer);
-  ws->zoomIn(13);
-  ws->setAutoCompletionThreshold(5);
-  ws->setAutoCompletionSource(QsciScintilla::AcsAPIs);
+  ws->setAutoCompletionThreshold(1);
+  ws->setAutoCompletionSource(SonicPiScintilla::AcsAPIs);
   ws->setSelectionBackgroundColor("DeepPink");
   ws->setSelectionForegroundColor("white");
   ws->setCaretWidth(5);
@@ -458,184 +679,194 @@ void MainWindow::startOSCListener() {
   std::cout << "Listening on port 4558" << std::endl;
   if (!sock.isOk()) {
     std::cout << "Unable to listen to OSC messages on port 4558" << std::endl;
-  } else {
-    PacketReader pr;
-    PacketWriter pw;
-    osc_incoming_port_open = true;
-    while (sock.isOk() && cont_listening_for_osc) {
+    invokeStartupError(tr("Is Sonic Pi already running?  Can't open UDP port 4558."));
+    return;
+  }
 
-      if (sock.receiveNextPacket(30 /* timeout, in ms */)) {
-        pr.init(sock.packetData(), sock.packetSize());
-        oscpkt::Message *msg;
-        while (pr.isOk() && (msg = pr.popMessage()) != 0) {
+  PacketReader pr;
+  PacketWriter pw;
+  osc_incoming_port_open = true;
+  while (sock.isOk() && cont_listening_for_osc) {
+
+    if (sock.receiveNextPacket(30 /* timeout, in ms */)) {
+      pr.init(sock.packetData(), sock.packetSize());
+      oscpkt::Message *msg;
+      while (pr.isOk() && (msg = pr.popMessage()) != 0) {
 
 
-          if (msg->match("/multi_message")){
-            int msg_count;
-            int msg_type;
-            int job_id;
-            std::string thread_name;
-            std::string runtime;
-            std::string s;
-            std::ostringstream ss;
+	if (msg->match("/multi_message")){
+	  int msg_count;
+	  int msg_type;
+	  int job_id;
+	  std::string thread_name;
+	  std::string runtime;
+	  std::string s;
+	  std::ostringstream ss;
 
-            Message::ArgReader ar = msg->arg();
-            ar.popInt32(job_id);
-            ar.popStr(thread_name);
-            ar.popStr(runtime);
-            ar.popInt32(msg_count);
-            QMetaObject::invokeMethod( outputPane, "setTextColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("#5e5e5e")));
-            ss << "[Run " << job_id;
-            ss << ", Time " << runtime;
-            if(!thread_name.empty()) {
-              ss << ", Thread :" << thread_name;
-            }
-            ss << "]";
-            QMetaObject::invokeMethod( outputPane, "append", Qt::QueuedConnection,
-                                       Q_ARG(QString, QString::fromStdString(ss.str())) );
+	  Message::ArgReader ar = msg->arg();
+	  ar.popInt32(job_id);
+	  ar.popStr(thread_name);
+	  ar.popStr(runtime);
+	  ar.popInt32(msg_count);
+	  QMetaObject::invokeMethod( outputPane, "setTextColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("#5e5e5e")));
+	  ss << "[Run " << job_id;
+	  ss << ", Time " << runtime;
+	  if(!thread_name.empty()) {
+	    ss << ", Thread :" << thread_name;
+	  }
+	  ss << "]";
+	  QMetaObject::invokeMethod( outputPane, "append", Qt::QueuedConnection,
+				     Q_ARG(QString, QString::fromStdString(ss.str())) );
 
-            for(int i = 0 ; i < msg_count ; i++) {
-              ss.str("");
-              ss.clear();
-              ar.popInt32(msg_type);
-              ar.popStr(s);
+	  for(int i = 0 ; i < msg_count ; i++) {
+	    ss.str("");
+	    ss.clear();
+	    ar.popInt32(msg_type);
+	    ar.popStr(s);
 
 #if defined(Q_OS_WIN)
-              if(i == (msg_count - 1)) {
-                ss << " └─ ";
-              } else {
-                ss << " ├─ ";
-              }
+	    if(i == (msg_count - 1)) {
+	      ss << " └─ ";
+	    } else {
+	      ss << " ├─ ";
+	    }
 #elif defined(Q_OS_MAC)
-              if(i == (msg_count - 1)) {
-                ss << " └─ ";
-              } else {
-                ss << " ├─ ";
-              }
+	    if(i == (msg_count - 1)) {
+	      ss << " └─ ";
+	    } else {
+	      ss << " ├─ ";
+	    }
 #else
-  //assuming Raspberry Pi
-              if(i == (msg_count - 1)) {
-                ss << " +- ";
-              } else {
-                ss << " |- ";
-              }
+	    //assuming Raspberry Pi
+	    if(i == (msg_count - 1)) {
+	      ss << " +- ";
+	    } else {
+	      ss << " |- ";
+	    }
 #endif
 
 
-              QMetaObject::invokeMethod( outputPane, "append", Qt::QueuedConnection,
-                                         Q_ARG(QString, QString::fromStdString(ss.str())) );
+	    QMetaObject::invokeMethod( outputPane, "append", Qt::QueuedConnection,
+				       Q_ARG(QString, QString::fromStdString(ss.str())) );
 
 
-              ss.str("");
-              ss.clear();
+	    ss.str("");
+	    ss.clear();
 
-              switch(msg_type)
-                {
-                case 0:
-                  QMetaObject::invokeMethod( outputPane, "setTextColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("deeppink")));
-                  break;
-                case 1:
-                  QMetaObject::invokeMethod( outputPane, "setTextColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("dodgerblue")));
-                  break;
-                case 2:
-                  QMetaObject::invokeMethod( outputPane, "setTextColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("darkorange")));
-                  break;
-                case 3:
-                  QMetaObject::invokeMethod( outputPane, "setTextColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("red")));
-                  break;
-                case 4:
-                  QMetaObject::invokeMethod( outputPane, "setTextColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("white")));
-                  QMetaObject::invokeMethod( outputPane, "setTextBackgroundColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("deeppink")));
-                  break;
-                case 5:
-                  QMetaObject::invokeMethod( outputPane, "setTextColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("white")));
-                  QMetaObject::invokeMethod( outputPane, "setTextBackgroundColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("dodgerblue")));
-                  break;
-                case 6:
-                  QMetaObject::invokeMethod( outputPane, "setTextColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("white")));
-                  QMetaObject::invokeMethod( outputPane, "setTextBackgroundColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("darkorange")));
-                  break;
-                default:
-                  QMetaObject::invokeMethod( outputPane, "setTextColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("green")));
-                }
+	    switch(msg_type)
+	      {
+	      case 0:
+		QMetaObject::invokeMethod( outputPane, "setTextColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("deeppink")));
+		break;
+	      case 1:
+		QMetaObject::invokeMethod( outputPane, "setTextColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("dodgerblue")));
+		break;
+	      case 2:
+		QMetaObject::invokeMethod( outputPane, "setTextColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("darkorange")));
+		break;
+	      case 3:
+		QMetaObject::invokeMethod( outputPane, "setTextColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("red")));
+		break;
+	      case 4:
+		QMetaObject::invokeMethod( outputPane, "setTextColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("white")));
+		QMetaObject::invokeMethod( outputPane, "setTextBackgroundColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("deeppink")));
+		break;
+	      case 5:
+		QMetaObject::invokeMethod( outputPane, "setTextColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("white")));
+		QMetaObject::invokeMethod( outputPane, "setTextBackgroundColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("dodgerblue")));
+		break;
+	      case 6:
+		QMetaObject::invokeMethod( outputPane, "setTextColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("white")));
+		QMetaObject::invokeMethod( outputPane, "setTextBackgroundColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("darkorange")));
+		break;
+	      default:
+		QMetaObject::invokeMethod( outputPane, "setTextColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("green")));
+	      }
 
-              ss << s;
+	    ss << s;
 
-              QMetaObject::invokeMethod( outputPane, "insertPlainText", Qt::QueuedConnection,
-                                         Q_ARG(QString, QString::fromStdString(ss.str())) );
+	    QMetaObject::invokeMethod( outputPane, "insertPlainText", Qt::QueuedConnection,
+				       Q_ARG(QString, QString::fromStdString(ss.str())) );
 
-              QMetaObject::invokeMethod( outputPane, "setTextColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("#5e5e5e")));
-              QMetaObject::invokeMethod( outputPane, "setTextBackgroundColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("white")));
+	    QMetaObject::invokeMethod( outputPane, "setTextColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("#5e5e5e")));
+	    QMetaObject::invokeMethod( outputPane, "setTextBackgroundColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("white")));
 
 
 
-              }
-            QMetaObject::invokeMethod( outputPane, "append", Qt::QueuedConnection,
-                                       Q_ARG(QString,  QString::fromStdString(" ")) );
-          }
-          else if (msg->match("/info")) {
-            std::string s;
-            if (msg->arg().popStr(s).isOkNoMoreArgs()) {
-              // Evil nasties!
-              // See: http://www.qtforum.org/article/26801/qt4-threads-and-widgets.html
+	  }
+	  QMetaObject::invokeMethod( outputPane, "append", Qt::QueuedConnection,
+				     Q_ARG(QString,  QString::fromStdString(" ")) );
+	}
+	else if (msg->match("/info")) {
+	  std::string s;
+	  if (msg->arg().popStr(s).isOkNoMoreArgs()) {
+	    // Evil nasties!
+	    // See: http://www.qtforum.org/article/26801/qt4-threads-and-widgets.html
 
-              QMetaObject::invokeMethod( outputPane, "setTextColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("white")));
-              QMetaObject::invokeMethod( outputPane, "setTextBackgroundColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("#5e5e5e")));
+	    QMetaObject::invokeMethod( outputPane, "setTextColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("white")));
+	    QMetaObject::invokeMethod( outputPane, "setTextBackgroundColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("#5e5e5e")));
 
-              QMetaObject::invokeMethod( outputPane, "append", Qt::QueuedConnection,
-                                         Q_ARG(QString, QString::fromStdString("=> " + s + "\n")) );
+	    QMetaObject::invokeMethod( outputPane, "append", Qt::QueuedConnection,
+				       Q_ARG(QString, QString::fromStdString("=> " + s + "\n")) );
 
-              QMetaObject::invokeMethod( outputPane, "setTextColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("#5e5e5e")));
-              QMetaObject::invokeMethod( outputPane, "setTextBackgroundColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("white")));
-            } else {
-              std::cout << "Server: unhandled info message: "<< std::endl;
-            }
-          }
-          else if (msg->match("/error")) {
-            int job_id;
-            std::string desc;
-            std::string backtrace;
-            if (msg->arg().popInt32(job_id).popStr(desc).popStr(backtrace).isOkNoMoreArgs()) {
-              // Evil nasties!
-              // See: http://www.qtforum.org/article/26801/qt4-threads-and-widgets.html
-              QMetaObject::invokeMethod( errorPane, "show", Qt::QueuedConnection);
-              QMetaObject::invokeMethod( errorPane, "clear", Qt::QueuedConnection);
-              QMetaObject::invokeMethod( errorPane, "setHtml", Qt::QueuedConnection,
-                                         Q_ARG(QString, "<table width=\"100%\"> cellpadding=\"2\"><tr><td bgcolor=\"#FFE4E1\"><h3><font color=\"black\"><pre>Error: " + QString::fromStdString(desc) + "</pre></font></h3></td></tr><tr><td bgcolor=\"#E8E8E8\"><h4><font color=\"#5e5e5e\", background-color=\"black\"><pre>" + QString::fromStdString(backtrace) + "</pre></font></h4></td></tr></table>") );
+	    QMetaObject::invokeMethod( outputPane, "setTextColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("#5e5e5e")));
+	    QMetaObject::invokeMethod( outputPane, "setTextBackgroundColor", Qt::QueuedConnection, Q_ARG(QColor, QColor("white")));
+	  } else {
+	    std::cout << "Server: unhandled info message: "<< std::endl;
+	  }
+	}
+	else if (msg->match("/error")) {
+	  int job_id;
+	  std::string desc;
+	  std::string backtrace;
+	  if (msg->arg().popInt32(job_id).popStr(desc).popStr(backtrace).isOkNoMoreArgs()) {
+	    // Evil nasties!
+	    // See: http://www.qtforum.org/article/26801/qt4-threads-and-widgets.html
+	    QMetaObject::invokeMethod( errorPane, "show", Qt::QueuedConnection);
+	    QMetaObject::invokeMethod( errorPane, "clear", Qt::QueuedConnection);
+	    QMetaObject::invokeMethod( errorPane, "setHtml", Qt::QueuedConnection,
+				       Q_ARG(QString, "<table width=\"100%\"> cellpadding=\"2\"><tr><td bgcolor=\"#FFE4E1\"><h3><font color=\"black\"><pre>Error: " + QString::fromStdString(desc) + "</pre></font></h3></td></tr><tr><td bgcolor=\"#E8E8E8\"><h4><font color=\"#5e5e5e\", background-color=\"black\"><pre>" + QString::fromStdString(backtrace) + "</pre></font></h4></td></tr></table>") );
 
-            } else {
-              std::cout << "Server: unhandled error: "<< std::endl;
-            }
-          }
-          else if (msg->match("/replace-buffer")) {
-            std::string id;
-            std::string content;
-            if (msg->arg().popStr(id).popStr(content).isOkNoMoreArgs()) {
+	  } else {
+	    std::cout << "Server: unhandled error: "<< std::endl;
+	  }
+	}
+	else if (msg->match("/replace-buffer")) {
+	  std::string id;
+	  std::string content;
+	  if (msg->arg().popStr(id).popStr(content).isOkNoMoreArgs()) {
 
-              QMetaObject::invokeMethod( this, "replaceBuffer", Qt::QueuedConnection, Q_ARG(QString, QString::fromStdString(id)), Q_ARG(QString, QString::fromStdString(content)));
-            } else {
-              std::cout << "Server: unhandled replace-buffer: "<< std::endl;
-            }
-          }
-          else if (msg->match("/exited")) {
-            if (msg->arg().isOkNoMoreArgs()) {
-              std::cout << "server asked us to exit" << std::endl;
-              cont_listening_for_osc = false;
-            } else {
-              std::cout << "Server: unhandled exited: "<< std::endl;
-            }
-          }
-          else if (msg->match("/ack")) {
-            std::string id;
-            if (msg->arg().popStr(id).isOkNoMoreArgs()) {
-              server_started = true;
-            } else
-              std::cout << "Server: unhandled ack " << std::endl;
-          }
-          else {
-            std::cout << "Unknown message" << std::endl;
-          }
-        }
+	    QMetaObject::invokeMethod( this, "replaceBuffer", Qt::QueuedConnection, Q_ARG(QString, QString::fromStdString(id)), Q_ARG(QString, QString::fromStdString(content)));
+	    loaded_workspaces = true;
+	  } else {
+	    std::cout << "Server: unhandled replace-buffer: "<< std::endl;
+	  }
+	}
+	else if (msg->match("/exited")) {
+	  std::string content;
+	  if (msg->arg().nbArgRemaining()) {
+	    msg->arg().popStr(content);
+	    std::cout << "server exited with error: " << content << std::endl;
+	    invokeStartupError(QString("server error: ") +
+			       QString::fromStdString(content));
+
+	  } else if (msg->arg().isOkNoMoreArgs()) {
+	    std::cout << "server asked us to exit" << std::endl;
+	    cont_listening_for_osc = false;
+	  } else {
+	    std::cout << "Server: unhandled exited: " << std::endl;
+	  }
+	}
+	else if (msg->match("/ack")) {
+	  std::string id;
+	  if (msg->arg().popStr(id).isOkNoMoreArgs()) {
+	    server_started = true;
+	  } else
+	    std::cout << "Server: unhandled ack " << std::endl;
+	}
+	else {
+	  std::cout << "Unknown message" << std::endl;
+	}
       }
     }
   }
@@ -643,8 +874,23 @@ void MainWindow::startOSCListener() {
   sock.close();
 }
 
+void MainWindow::invokeStartupError(QString msg) {
+  startup_error_reported = true;
+  cont_listening_for_osc = false; // kicks us out of waiting for server
+  QMetaObject::invokeMethod(this, "startupError",
+			    Qt::QueuedConnection,
+			    Q_ARG(QString, msg));
+}
+
+void MainWindow::startupError(QString msg) {
+  startup_error_reported = true;
+  QMessageBox::critical(this, tr("Startup failed"),
+			tr("Startup error: ") + msg, QMessageBox::Abort);
+  QTimer::singleShot(0, this, SLOT(close()));
+}
+
 void MainWindow::replaceBuffer(QString id, QString content) {
-  QsciScintilla* ws = filenameToWorkspace(id.toStdString());
+  SonicPiScintilla* ws = filenameToWorkspace(id.toStdString());
   int line;
   int index;
   QString line_content;
@@ -724,7 +970,7 @@ bool MainWindow::saveAs()
 {
   QString fileName = QFileDialog::getSaveFileName(this, tr("Save Current Workspace"), QDir::homePath() + "/Desktop");
   if(!fileName.isEmpty()){
-    return saveFile(fileName, (QsciScintilla*)tabs->currentWidget());
+    return saveFile(fileName, (SonicPiScintilla*)tabs->currentWidget());
   } else {
     return false;
   }
@@ -745,19 +991,28 @@ bool MainWindow::saveAs()
   }
 }
 
+ void MainWindow::resetErrorPane() {
+  errorPane->clear();
+  errorPane->hide();
+ }
+
+
 void MainWindow::runCode()
 {
 
 
-  QsciScintilla *ws = ((QsciScintilla*)tabs->currentWidget());
-  ws->getCursorPosition(&currentLine, &currentIndex);
-  ws->selectAll(true);
-  errorPane->clear();
-  errorPane->hide();
+  SonicPiScintilla *ws = ((SonicPiScintilla*)tabs->currentWidget());
+  if (currentLine == 0 && currentIndex == 0) {
+    // only update saved position if we're not already highlighting code
+    ws->getCursorPosition(&currentLine, &currentIndex);
+  }
+  ws->setReadOnly(true);
+  ws->selectAll();
+  resetErrorPane();
   statusBar()->showMessage(tr("Running Code...."), 1000);
-  std::string code = ((QsciScintilla*)tabs->currentWidget())->text().toStdString();
+  std::string code = ((SonicPiScintilla*)tabs->currentWidget())->text().toStdString();
   Message msg("/save-and-run-buffer");
-  std::string filename = workspaceFilename( (QsciScintilla*)tabs->currentWidget());
+  std::string filename = workspaceFilename( (SonicPiScintilla*)tabs->currentWidget());
   msg.pushStr(filename);
   if(!print_output->isChecked()) {
     code = "use_debug false #__nosave__ set by Qt GUI user preferences.\n" + code ;
@@ -776,6 +1031,7 @@ void MainWindow::runCode()
   }
 
   msg.pushStr(code);
+  msg.pushStr(QString("Workspace %1").arg(tabs->currentIndex()+1).toStdString());
   sendOSC(msg);
 
   QTimer::singleShot(500, this, SLOT(unhighlightCode()));
@@ -783,18 +1039,23 @@ void MainWindow::runCode()
 
 }
 
- void MainWindow::unhighlightCode()
- {
-  ((QsciScintilla*)tabs->currentWidget())->selectAll(false);
-  ((QsciScintilla*)tabs->currentWidget())->setCursorPosition(currentLine, currentIndex);
- }
+void MainWindow::unhighlightCode()
+{
+  SonicPiScintilla *ws = (SonicPiScintilla *)tabs->currentWidget();
+  ws->selectAll(false);
+  if (currentLine != 0 || currentIndex != 0) {
+    ws->setCursorPosition(currentLine, currentIndex);
+    currentLine = 0; currentIndex = 0;
+  }
+  ws->setReadOnly(false);
+}
 
  void MainWindow::beautifyCode()
  {
   statusBar()->showMessage(tr("Beautifying...."), 2000);
-  std::string code = ((QsciScintilla*)tabs->currentWidget())->text().toStdString();
+  std::string code = ((SonicPiScintilla*)tabs->currentWidget())->text().toStdString();
   Message msg("/beautify-buffer");
-  std::string filename = workspaceFilename( (QsciScintilla*)tabs->currentWidget());
+  std::string filename = workspaceFilename( (SonicPiScintilla*)tabs->currentWidget());
   msg.pushStr(filename);
   msg.pushStr(code);
   sendOSC(msg);
@@ -807,6 +1068,63 @@ void MainWindow::reloadServerCode()
   sendOSC(msg);
 }
 
+void MainWindow::mixerHpfEnable(float freq)
+{
+  statusBar()->showMessage(tr("enabling mixer HPF...."), 2000);
+  Message msg("/mixer-hpf-enable");
+  msg.pushFloat(freq);
+  sendOSC(msg);
+}
+
+void MainWindow::mixerHpfDisable()
+{
+  statusBar()->showMessage(tr("disabling mixer HPF...."), 2000);
+  Message msg("/mixer-hpf-disable");
+  sendOSC(msg);
+}
+
+void MainWindow::mixerLpfEnable(float freq)
+{
+  statusBar()->showMessage(tr("enabling Mixer HPF...."), 2000);
+  Message msg("/mixer-lpf-enable");
+  msg.pushFloat(freq);
+  sendOSC(msg);
+}
+
+void MainWindow::mixerLpfDisable()
+{
+  statusBar()->showMessage(tr("disabling mixer LPF...."), 2000);
+  Message msg("/mixer-lpf-disable");
+  sendOSC(msg);
+}
+
+void MainWindow::mixerInvertStereo()
+{
+  statusBar()->showMessage(tr("enabling inverted stereo...."), 2000);
+  Message msg("/mixer-invert-stereo");
+  sendOSC(msg);
+}
+
+void MainWindow::mixerStandardStereo()
+{
+  statusBar()->showMessage(tr("enabling standard stereo...."), 2000);
+  Message msg("/mixer-standard-stereo");
+  sendOSC(msg);
+}
+
+void MainWindow::mixerMonoMode()
+{
+  statusBar()->showMessage(tr("mono mode...."), 2000);
+  Message msg("/mixer-mono-mode");
+  sendOSC(msg);
+}
+
+void MainWindow::mixerStereoMode()
+{
+  statusBar()->showMessage(tr("stereo mode...."), 2000);
+  Message msg("/mixer-stereo-mode");
+  sendOSC(msg);
+}
 
 void MainWindow::stopCode()
 {
@@ -816,6 +1134,8 @@ void MainWindow::stopCode()
 
 void MainWindow::about()
 {
+  // todo: this is returning true even after the window disappears
+  // Qt::Tool windows get closed automatically when app loses focus
   if(infoWidg->isVisible()) {
     infoWidg->hide();
   } else {
@@ -831,6 +1151,38 @@ void MainWindow::help()
     docWidget->hide();
   } else {
     docWidget->show();
+  }
+}
+
+void MainWindow::helpContext()
+{
+  if (!docWidget->isVisible())
+    docWidget->show();
+  SonicPiScintilla *ws = ((SonicPiScintilla*)tabs->currentWidget());
+  QString selection = ws->selectedText();
+  if (selection == "") { // get current word instead
+    int line, pos;
+    ws->getCursorPosition(&line, &pos);
+    QString text = ws->text(line);
+    int start, end;
+    for (start = pos; start > 0; start--) {
+      if (!text[start-1].isLetter() && text[start-1] != '_') break;
+    }
+    for (end = pos; end < text.length(); end++) {
+      if (!text[end].isLetter() && text[end] != '_') break;
+    }
+    selection = text.mid(start, end-start);
+  }
+  selection = selection.toLower();
+  if (selection[0] == ':')
+    selection = selection.mid(1);
+
+  if (helpKeywords.contains(selection)) {
+    struct help_entry entry = helpKeywords[selection];
+    QMetaObject::invokeMethod(docsCentral, "setCurrentIndex",
+			      Q_ARG(int, entry.pageIndex));
+    QListWidget *list = helpLists[entry.pageIndex];
+    list->setCurrentRow(entry.entryIndex);
   }
 }
 
@@ -919,13 +1271,35 @@ void MainWindow::showPrefsPane()
 
 void MainWindow::zoomFontIn()
 {
-  ((QsciScintilla*)tabs->currentWidget())->zoomIn(1);
+  SonicPiScintilla* ws = ((SonicPiScintilla*)tabs->currentWidget());
+  int zoom = ws->property("zoom").toInt();
+  zoom++;
+  if (zoom > 20) zoom = 20;
+  ws->setProperty("zoom", QVariant(zoom));
+  ws->zoomTo(zoom);
 }
 
 void MainWindow::zoomFontOut()
 {
-  ((QsciScintilla*)tabs->currentWidget())->zoomOut(1);
+  SonicPiScintilla* ws = ((SonicPiScintilla*)tabs->currentWidget());
+  int zoom = ws->property("zoom").toInt();
+  zoom--;
+  if (zoom < -5) zoom = -5;
+  ws->setProperty("zoom", QVariant(zoom));
+  ws->zoomTo(zoom);
 }
+
+void MainWindow::wheelEvent(QWheelEvent *event) {
+#if defined(Q_OS_WIN)
+  if (event->modifiers() & Qt::ControlModifier) {
+    if (event->angleDelta().y() > 0)
+      zoomFontIn();
+    else
+      zoomFontOut();
+  }
+#endif
+}
+
 
 
 void MainWindow::documentWasModified()
@@ -946,119 +1320,116 @@ void MainWindow::clearOutputPanels()
     errorPane->clear();
 }
 
+QKeySequence MainWindow::ctrlKey(char key)
+{
+#ifdef Q_OS_MAC
+  return QKeySequence(QString("Meta+%1").arg(key));
+#else
+  return QKeySequence(QString("Ctrl+%1").arg(key));
+#endif
+}
+
+// Cmd on Mac, Alt everywhere else
+QKeySequence MainWindow::cmdAltKey(char key)
+{
+#ifdef Q_OS_MAC
+  return QKeySequence(QString("Ctrl+%1").arg(key));
+#else
+  return QKeySequence(QString("alt+%1").arg(key));
+#endif
+}
+
+// set tooltips, connect event handlers, and add shortcut if applicable
+void MainWindow::setupAction(QAction *action, char key, QString tooltip,
+				 const char *slot)
+{
+  QString shortcut, tooltipKey;
+  tooltipKey = tooltip;
+  if (key != 0) {
+#ifdef Q_OS_MAC
+    tooltipKey = QString("%1 (⌘%2)").arg(tooltip).arg(key);
+#else
+    tooltipKey = QString("%1 (alt-%2)").arg(tooltip).arg(key);
+#endif
+  }
+
+  action->setToolTip(tooltipKey);
+  action->setStatusTip(tooltip);
+  connect(action, SIGNAL(triggered()), this, slot);
+
+  if (key != 0) {
+    // create a QShortcut instead of setting the QAction's shortcut
+    // so it will still be active with the toolbar hidden
+    new QShortcut(cmdAltKey(key), this, slot);
+  }
+}
+
 void MainWindow::createActions()
 {
 
   // Run
-  runAct = new QAction(QIcon(":/images/run.png"), tr("&Run"), this);
-#ifdef Q_OS_MAC
-  runAct->setShortcut(tr("ctrl+R"));
-  runAct->setToolTip(tr("Run the code in the current workspace (⌘R)"));
-#else
-  runAct->setShortcut(tr("alt+R"));
-  runAct->setToolTip(tr("Run the code in the current workspace (alt-R)"));
-#endif
-  runAct->setStatusTip(tr("Run the code in the current workspace"));
-  connect(runAct, SIGNAL(triggered()), this, SLOT(runCode()));
+  runAct = new QAction(QIcon(":/images/run.png"), tr("Run"), this);
+  setupAction(runAct, 'R', tr("Run the code in the current workspace"),
+		 SLOT(runCode()));
 
   // Stop
-  stopAct = new QAction(QIcon(":/images/stop.png"), tr("&Stop"), this);
-#ifdef Q_OS_MAC
-  stopAct->setShortcut(tr("ctrl+S"));
-  stopAct->setToolTip(tr("Stop all running code (⌘S)"));
-#else
-  stopAct->setShortcut(tr("alt+S"));
-  stopAct->setToolTip(tr("Stop all running code (alt-S)"));
-#endif
-  stopAct->setStatusTip(tr("Stop all running code"));
-  connect(stopAct, SIGNAL(triggered()), this, SLOT(stopCode()));
+  stopAct = new QAction(QIcon(":/images/stop.png"), tr("Stop"), this);
+  setupAction(stopAct, 'S', tr("Stop all running code"), SLOT(stopCode()));
 
   // Save
-  saveAsAct = new QAction(QIcon(":/images/save.png"), tr("&Save &As..."), this);
-  saveAsAct->setToolTip(tr("Export current workspace"));
-  saveAsAct->setStatusTip(tr("Export current workspace"));
-  connect(saveAsAct, SIGNAL(triggered()), this, SLOT(saveAs()));
+  saveAsAct = new QAction(QIcon(":/images/save.png"), tr("Save As..."), this);
+  setupAction(saveAsAct, 0, tr("Export current workspace"), SLOT(saveAs()));
 
   // Info
-  infoAct = new QAction(QIcon(":/images/info.png"), tr("&Info"), this);
-  infoAct->setToolTip(tr("See information about Sonic Pi"));
-  infoAct->setStatusTip(tr("See information about Sonic Pi"));
-  connect(infoAct, SIGNAL(triggered()), this, SLOT(about()));
+  infoAct = new QAction(QIcon(":/images/info.png"), tr("Info"), this);
+  setupAction(infoAct, 0, tr("See information about Sonic Pi"),
+		 SLOT(about()));
 
   // Help
-  helpAct = new QAction(QIcon(":/images/help.png"), tr("&Help"), this);
-#ifdef Q_OS_MAC
-  helpAct->setShortcut(tr("ctrl+I"));
-  helpAct->setToolTip(tr("Toggle help pane (⌘I)"));
-#else
-  helpAct->setShortcut(tr("alt+I"));
-  helpAct->setToolTip(tr("Toggle help pane (alt-I)"));
-#endif
-  helpAct->setStatusTip(tr("Toggle help pane"));
-  connect(helpAct, SIGNAL(triggered()), this, SLOT(help()));
+  helpAct = new QAction(QIcon(":/images/help.png"), tr("Help"), this);
+  setupAction(helpAct, 'I', tr("Toggle help pane"), SLOT(help()));
+
+  new QShortcut(QKeySequence("F1"), this, SLOT(helpContext()));
+  new QShortcut(ctrlKey('i'), this, SLOT(helpContext()));
+
+  new QShortcut(cmdAltKey('['), this, SLOT(tabPrev()));
+  new QShortcut(cmdAltKey('{'), this, SLOT(tabPrev()));
+  new QShortcut(cmdAltKey(']'), this, SLOT(tabNext()));
+  new QShortcut(cmdAltKey('}'), this, SLOT(tabNext()));
+  new QShortcut(Qt::Key_Escape, this, SLOT(resetErrorPane()));
+  new QShortcut(ctrlKey('g'), this, SLOT(resetErrorPane()));
+
 
   // Preferences
-  prefsAct = new QAction(QIcon(":/images/prefs.png"), tr("&Prefs"), this);
-  prefsAct->setToolTip(tr("Toggle preferences pane"));
-  prefsAct->setStatusTip(tr("Toggle preferences pane"));
-  connect(prefsAct, SIGNAL(triggered()), this, SLOT(showPrefsPane()));
+  prefsAct = new QAction(QIcon(":/images/prefs.png"), tr("Prefs"), this);
+  setupAction(prefsAct, 'P', tr("Toggle preferences pane"),
+	      SLOT(showPrefsPane()));
 
   // Record
-  recAct = new QAction(QIcon(":/images/rec.png"), tr("&Start &Recording"), this);
-  recAct->setToolTip(tr("Start Recording"));
-  recAct->setStatusTip(tr("Start Recording"));
-  connect(recAct, SIGNAL(triggered()), this, SLOT(toggleRecording()));
+  recAct = new QAction(QIcon(":/images/rec.png"), tr("Start Recording"), this);
+  setupAction(recAct, 0, tr("Start Recording"), SLOT(toggleRecording()));
 
   // Align
-  textAlignAct = new QAction(QIcon(":/images/align.png"), tr("&Auto &Align &Text"), this);
-#ifdef Q_OS_MAC
-  textAlignAct->setShortcut(tr("ctrl+M"));
-  textAlignAct->setToolTip(tr("Auto-align text (⌘M)"));
-#else
-  textAlignAct->setShortcut(tr("alt+M"));
-  textAlignAct->setToolTip(tr("Auto-align text (alt-M)"));
-#endif
-  textAlignAct->setStatusTip(tr("Auto-align text"));
-  connect(textAlignAct, SIGNAL(triggered()), this, SLOT(beautifyCode()));
+  textAlignAct = new QAction(QIcon(":/images/align.png"),
+			     tr("Auto Align Text"), this);
+  setupAction(textAlignAct, 'M', tr("Auto-align text"), SLOT(beautifyCode()));
 
   // Font Size Increase
-  textIncAct1 = new QAction(QIcon(":/images/size_up.png"), tr("&Increase &Text &Size"), this);
-  textIncAct2 = new QAction(this);
-  textIncAct1->setStatusTip(tr("Make text bigger"));
-#ifdef Q_OS_MAC
-  textIncAct1->setShortcut(tr("ctrl++"));
-  textIncAct2->setShortcut(tr("ctrl+="));
-  textIncAct1->setToolTip(tr("Make text bigger (⌘+)"));
-#else
-  textIncAct1->setShortcut(tr("alt++"));
-  textIncAct2->setShortcut(tr("alt+="));
-  textIncAct1->setToolTip(tr("Make text bigger (alt+)"));
-#endif
-  textIncAct1->setStatusTip(tr("Make text bigger (alt+)"));
-  connect(textIncAct1, SIGNAL(triggered()), this, SLOT(zoomFontIn()));
-  connect(textIncAct2, SIGNAL(triggered()), this, SLOT(zoomFontIn()));
+  textIncAct1 = new QAction(QIcon(":/images/size_up.png"),
+			    tr("Increase Text Size"), this);
+  setupAction(textIncAct1, '+', tr("Make text bigger"), SLOT(zoomFontIn()));
+  textIncKey2 = new QShortcut(cmdAltKey('='), this,
+			      SLOT(zoomFontIn()));
 
   // Font Size Decrease
-  textDecAct1 = new QAction(QIcon(":/images/size_down.png"), tr("&Decrease &Text &Size"), this);
-  textDecAct2 = new QAction(this);
-#ifdef Q_OS_MAC
-  textDecAct1->setShortcut(tr("ctrl+-"));
-  textDecAct2->setShortcut(tr("ctrl+_"));
-  textDecAct1->setToolTip(tr("Make text smaller (⌘-)"));
-#else
-  textDecAct1->setShortcut(tr("alt+-"));
-  textDecAct2->setShortcut(tr("alt+_"));
-  textDecAct1->setToolTip(tr("Make text smaller (alt-)"));
-#endif
-  textDecAct1->setStatusTip(tr("Make text smaller (alt-)"));
-  connect(textDecAct1, SIGNAL(triggered()), this, SLOT(zoomFontOut()));
-  connect(textDecAct2, SIGNAL(triggered()), this, SLOT(zoomFontOut()));
-  addAction(textDecAct2);
+  textDecAct1 = new QAction(QIcon(":/images/size_down.png"),
+			    tr("Decrease Text Size"), this);
+  setupAction(textDecAct1, '-', tr("Make text smaller"), SLOT(zoomFontOut()));
+  textDecKey2 = new QShortcut(cmdAltKey('_'), this,
+			      SLOT(zoomFontOut()));
 
-  QAction *reloadAct = new QAction(this);
-  reloadAct->setShortcut(QKeySequence(Qt::CTRL + Qt::Key_U));
-  connect(reloadAct, SIGNAL(triggered()), this, SLOT(reloadServerCode()));
-  addAction(reloadAct);
+  reloadKey = new QShortcut(cmdAltKey('U'), this, SLOT(reloadServerCode()));
+
 }
 
 void MainWindow::createToolBar()
@@ -1077,10 +1448,11 @@ void MainWindow::createToolBar()
   toolBar->addAction(recAct);
   toolBar->addWidget(spacer);
 
-  toolBar->addAction(textDecAct2);
-  toolBar->addAction(textIncAct2);
   toolBar->addAction(textDecAct1);
   toolBar->addAction(textIncAct1);
+  dynamic_cast<QToolButton*>(toolBar->widgetForAction(textDecAct1))->setAutoRepeat(true);
+  dynamic_cast<QToolButton*>(toolBar->widgetForAction(textIncAct1))->setAutoRepeat(true);
+
   toolBar->addAction(textAlignAct);
 
   toolBar->addAction(infoAct);
@@ -1138,6 +1510,19 @@ void MainWindow::readSettings()
     QSize size = settings.value("size", QSize(400, 400)).toSize();
     resize(size);
     move(pos);
+
+    for (int w=0; w < workspace_max; w++) {
+      // default zoom is 13
+      int zoom = settings.value(QString("workspace%1zoom").arg(w+1), 13)
+	.toInt();
+      if (zoom < -5) zoom = -5;
+      if (zoom > 20) zoom = 20;
+
+      workspaces[w]->setProperty("zoom", QVariant(zoom));
+      workspaces[w]->zoomTo(zoom);
+    }
+
+    restoreState(settings.value("windowState").toByteArray());
 }
 
 void MainWindow::writeSettings()
@@ -1146,9 +1531,16 @@ void MainWindow::writeSettings()
     settings.setValue("pos", pos());
     settings.setValue("size", size());
     settings.setValue("first_time", 0);
+
+    for (int w=0; w < workspace_max; w++) {
+      settings.setValue(QString("workspace%1zoom").arg(w+1),
+			workspaces[w]->property("zoom"));
+    }
+
+    settings.setValue("windowState", saveState());
 }
 
-void MainWindow::loadFile(const QString &fileName, QsciScintilla* &text)
+void MainWindow::loadFile(const QString &fileName, SonicPiScintilla* &text)
 {
     QFile file(fileName);
     if (!file.open(QFile::ReadOnly)) {
@@ -1166,7 +1558,7 @@ void MainWindow::loadFile(const QString &fileName, QsciScintilla* &text)
     statusBar()->showMessage(tr("File loaded"), 2000);
 }
 
-bool MainWindow::saveFile(const QString &fileName, QsciScintilla* text)
+bool MainWindow::saveFile(const QString &fileName, SonicPiScintilla* text)
 {
     QFile file(fileName);
     if (!file.open(QFile::WriteOnly)) {
@@ -1178,14 +1570,20 @@ bool MainWindow::saveFile(const QString &fileName, QsciScintilla* text)
     }
 
     QTextStream out(&file);
+
     QApplication::setOverrideCursor(Qt::WaitCursor);
-    out << text->text();
+    QString code = text->text();
+#if defined(Q_OS_WIN)
+    code.replace("\n", "\r\n"); // CRLF for Windows users
+#endif
+    out << code;
     QApplication::restoreOverrideCursor();
+
     statusBar()->showMessage(tr("File saved"), 2000);
     return true;
 }
 
- std::string MainWindow::workspaceFilename(QsciScintilla* text)
+ std::string MainWindow::workspaceFilename(SonicPiScintilla* text)
 {
 	for(int i = 0; i < workspace_max; i++) {
 		if(text == workspaces[i]) {
@@ -1195,7 +1593,7 @@ bool MainWindow::saveFile(const QString &fileName, QsciScintilla* text)
 	return "default";
 }
 
- QsciScintilla*  MainWindow::filenameToWorkspace(std::string filename)
+ SonicPiScintilla*  MainWindow::filenameToWorkspace(std::string filename)
 {
 	std::string s;
 
@@ -1214,7 +1612,8 @@ void MainWindow::onExitCleanup()
     std::cout << "Server process is not running, something is up..." << std::endl;
     cont_listening_for_osc = false;
   } else {
-    saveWorkspaces();
+    if (loaded_workspaces)
+      saveWorkspaces();
     sleep(1);
     std::cout << "Asking server process to exit..." << std::endl;
     Message msg("/exit");
@@ -1225,15 +1624,14 @@ void MainWindow::onExitCleanup()
 
 }
 
-void MainWindow::updateDocPane(QListWidgetItem *cur, QListWidgetItem *prev) {
+void MainWindow::updateDocPane(QListWidgetItem *cur) {
   QString content = cur->data(32).toString();
-  tutorialDocPane->setHtml(content);
-  langDocPane->setHtml(content);
-  synthsDocPane->setHtml(content);
-  fxDocPane->setHtml(content);
-  samplesDocPane->setHtml(content);
-  examplesDocPane->setHtml(content);
-  (void) prev; /* unused, but needed for type signature */
+  docPane->setHtml(content);
+}
+
+void MainWindow::updateDocPane2(QListWidgetItem *cur, QListWidgetItem *prev) {
+  updateDocPane(cur);
+  prev = prev;
 }
 
 void MainWindow::setHelpText(QListWidgetItem *item, const QString filename) {
@@ -1252,29 +1650,109 @@ void MainWindow::setHelpText(QListWidgetItem *item, const QString filename) {
 void MainWindow::addHelpPage(QListWidget *nameList,
                              struct help_page *helpPages, int len) {
   int i;
+  struct help_entry entry;
+  entry.pageIndex = docsCentral->count()-1;
 
   for(i = 0; i < len; i++) {
     QListWidgetItem *item = new QListWidgetItem(helpPages[i].title);
     setHelpText(item, QString(helpPages[i].filename));
     item->setSizeHint(QSize(item->sizeHint().width(), 25));
     nameList->addItem(item);
+    entry.entryIndex = nameList->count()-1;
+    helpKeywords.insert(helpPages[i].keyword.toLower(), entry);
+
+    // magic numbers ahoy
+    // to be revamped along with the help system
+    switch (entry.pageIndex) {
+    case 2:
+      autocomplete->addSymbol(SonicPiAPIs::Synth, helpPages[i].keyword);
+      break;
+    case 3:
+      autocomplete->addSymbol(SonicPiAPIs::FX, helpPages[i].keyword);
+      break;
+    case 5:
+      autocomplete->addKeyword(SonicPiAPIs::Func, helpPages[i].keyword);
+      break;
+    }
   }
 }
 
-QListWidget *MainWindow::createHelpTab(QTextEdit *docPane, QString name) {
-	QListWidget *nameList = new QListWidget;
-	nameList->setSortingEnabled(true);
-	connect(nameList,
-			SIGNAL(currentItemChanged(QListWidgetItem*, QListWidgetItem*)),
-			this, SLOT(updateDocPane(QListWidgetItem*, QListWidgetItem*)));
-	QBoxLayout *layout = new QBoxLayout(QBoxLayout::LeftToRight);
-	layout->addWidget(nameList);
-	layout->addWidget(docPane);
-	layout->setStretch(1, 1);
-	QWidget *tabWidget = new QWidget;
-	tabWidget->setLayout(layout);
-	docsCentral->addTab(tabWidget, name);
-	return nameList;
+QListWidget *MainWindow::createHelpTab(QString name) {
+  QListWidget *nameList = new QListWidget;
+  connect(nameList,
+	  SIGNAL(itemPressed(QListWidgetItem*)),
+	  this, SLOT(updateDocPane(QListWidgetItem*)));
+  connect(nameList,
+	  SIGNAL(currentItemChanged(QListWidgetItem*, QListWidgetItem*)),
+	  this, SLOT(updateDocPane2(QListWidgetItem*, QListWidgetItem*)));
+
+  QShortcut *up = new QShortcut(ctrlKey('p'), nameList);
+  up->setContext(Qt::WidgetShortcut);
+  connect(up, SIGNAL(activated()), this, SLOT(helpScrollUp()));
+  QShortcut *down = new QShortcut(ctrlKey('n'), nameList);
+  down->setContext(Qt::WidgetShortcut);
+  connect(down, SIGNAL(activated()), this, SLOT(helpScrollDown()));
+
+  QBoxLayout *layout = new QBoxLayout(QBoxLayout::LeftToRight);
+  layout->addWidget(nameList);
+  layout->setStretch(1, 1);
+  QWidget *tabWidget = new QWidget;
+  tabWidget->setLayout(layout);
+  docsCentral->addTab(tabWidget, name);
+  helpLists.append(nameList);
+  return nameList;
 }
+
+void MainWindow::helpScrollUp() {
+  int section = docsCentral->currentIndex();
+  int entry = helpLists[section]->currentRow();
+
+  if (entry > 0)
+    entry--;
+  helpLists[section]->setCurrentRow(entry);
+}
+
+void MainWindow::helpScrollDown() {
+  int section = docsCentral->currentIndex();
+  int entry = helpLists[section]->currentRow();
+
+  if (entry < helpLists[section]->count()-1)
+    entry++;
+  helpLists[section]->setCurrentRow(entry);
+}
+
+void MainWindow::docScrollUp() {
+  docPane->verticalScrollBar()->triggerAction(QAbstractSlider::SliderSingleStepSub);
+}
+
+void MainWindow::docScrollDown() {
+  docPane->verticalScrollBar()->triggerAction(QAbstractSlider::SliderSingleStepAdd);
+}
+
+void MainWindow::tabNext() {
+  int index = tabs->currentIndex();
+  if (index == tabs->count()-1)
+    index = 0;
+  else
+    index++;
+  QMetaObject::invokeMethod(tabs, "setCurrentIndex", Q_ARG(int, index));
+}
+
+void MainWindow::tabPrev() {
+  int index = tabs->currentIndex();
+  if (index == 0)
+    index = tabs->count() - 1;
+  else
+    index--;
+  QMetaObject::invokeMethod(tabs, "setCurrentIndex", Q_ARG(int, index));
+}
+
+ void MainWindow::addUniversalCopyShortcuts(QTextEdit *te){
+   new QShortcut(ctrlKey('c'), te, SLOT(copy()));
+   new QShortcut(ctrlKey('a'), te, SLOT(selectAll()));
+
+   new QShortcut(cmdAltKey('c'), te, SLOT(copy()));
+   new QShortcut(cmdAltKey('a'), te, SLOT(selectAll()));
+ }
 
 #include "ruby_help.h"

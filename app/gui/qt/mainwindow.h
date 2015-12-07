@@ -24,22 +24,36 @@
 #include <QListWidget>
 #include <QProcess>
 #include <QFuture>
+#include <QShortcut>
+#include <QSettings>
+#include <QHash>
 #include "oscpkt.hh"
 #include "udp.hh"
 #include <iostream>
+#include <sstream>
+#include <fstream>
 
 class QAction;
 class QMenu;
 class QsciScintilla;
 class QProcess;
 class QTextEdit;
+class QTextBrowser;
 class SonicPiLexer;
 class QString;
 class QSlider;
+class SonicPiAPIs;
+class SonicPiScintilla;
 
 struct help_page {
-    QString title;
-    QString filename;
+  QString title;
+  QString keyword;
+  QString filename;
+};
+
+struct help_entry {
+  int pageIndex;
+  int entryIndex;
 };
 
 class MainWindow : public QMainWindow
@@ -54,15 +68,26 @@ public:
 #endif
 protected:
     void closeEvent(QCloseEvent *event);
+    void wheelEvent(QWheelEvent *event);
 
 private slots:
 
     void unhighlightCode();
     void runCode();
+    void update_mixer_invert_stereo();
+    void update_mixer_force_mono();
     void stopCode();
     void beautifyCode();
     void reloadServerCode();
     void stopRunningSynths();
+    void mixerInvertStereo();
+    void mixerStandardStereo();
+    void mixerMonoMode();
+    void mixerStereoMode();
+    void mixerLpfEnable(float freq);
+    void mixerHpfEnable(float freq);
+    void mixerHpfDisable();
+    void mixerLpfDisable();
     QString currentTabLabel();
     bool saveAs();
     void about();
@@ -78,14 +103,26 @@ private slots:
     void setRPSystemAudioHeadphones();
     void setRPSystemAudioHDMI();
     void showPrefsPane();
-    void updateDocPane(QListWidgetItem *cur, QListWidgetItem *prev);
+    void updateDocPane(QListWidgetItem *cur);
+    void updateDocPane2(QListWidgetItem *cur, QListWidgetItem *prev);
     void serverError(QProcess::ProcessError error);
     void serverFinished(int exitCode, QProcess::ExitStatus exitStatus);
+    void invokeStartupError(QString msg);
+    void startupError(QString msg);
     void replaceBuffer(QString id, QString content);
+    void tabNext();
+    void tabPrev();
+    void helpContext();
+    void resetErrorPane();
+    void helpScrollUp();
+    void helpScrollDown();
+    void docScrollUp();
+    void docScrollDown();
 
 private:
-
-    void initWorkspace(QsciScintilla* ws);
+    void addKeyBinding(QSettings &qs, int cmd, int key);
+    void addOtherKeyBinding(QSettings &qs, int cmd, int key);
+    void initWorkspace(SonicPiScintilla* ws);
     void startOSCListener();
     void clearOutputPanels();
     void createActions();
@@ -93,33 +130,41 @@ private:
     void createStatusBar();
     void readSettings();
     void writeSettings();
-    void loadFile(const QString &fileName, QsciScintilla* &text);
-    bool saveFile(const QString &fileName, QsciScintilla* text);
+    void loadFile(const QString &fileName, SonicPiScintilla* &text);
+    bool saveFile(const QString &fileName, SonicPiScintilla* text);
     void loadWorkspaces();
     void saveWorkspaces();
     std::string number_name(int);
-    std::string workspaceFilename(QsciScintilla* text);
-    QsciScintilla* filenameToWorkspace(std::string filename);
+    std::string workspaceFilename(SonicPiScintilla* text);
+    SonicPiScintilla* filenameToWorkspace(std::string filename);
     void sendOSC(oscpkt::Message m);
     void initPrefsWindow();
     void initDocsWindow();
     void setHelpText(QListWidgetItem *item, const QString filename);
     void addHelpPage(QListWidget *nameList, struct help_page *helpPages,
                      int len);
-    QListWidget *createHelpTab(QTextEdit *docPane, QString name);
+    QListWidget *createHelpTab(QString name);
+    QKeySequence cmdAltKey(char key);
+    QKeySequence ctrlKey(char key);
+    void setupAction(QAction *action, char key, QString tooltip,
+		     const char *slot);
+
+    void addUniversalCopyShortcuts(QTextEdit *te);
 
     QFuture<void> osc_thread;
 
     bool cont_listening_for_osc;
     bool server_started;
+    bool startup_error_reported;
     bool osc_incoming_port_open;
     bool is_recording;
     bool show_rec_icon_a;
+    bool loaded_workspaces;
     QTimer *rec_flash_timer;
 
-    QsciScintilla *textEdit;
+    SonicPiScintilla *textEdit;
     static const int workspace_max = 8;
-    QsciScintilla *workspaces[workspace_max];
+    SonicPiScintilla *workspaces[workspace_max];
     QTextEdit *outputPane;
     QTextEdit *errorPane;
     QWidget *prefsCentral;
@@ -127,12 +172,7 @@ private:
     QDockWidget *outputWidget;
     QDockWidget *prefsWidget;
     QDockWidget *docWidget;
-    QTextEdit *tutorialDocPane;
-    QTextEdit *langDocPane;
-    QTextEdit *synthsDocPane;
-    QTextEdit *fxDocPane;
-    QTextEdit *samplesDocPane;
-    QTextEdit *examplesDocPane;
+    QTextBrowser *docPane;
 
     QTabWidget *tabs;
 
@@ -155,9 +195,7 @@ private:
     QAction *helpAct;
     QAction *textAlignAct;
     QAction *textIncAct1;
-    QAction *textIncAct2;
     QAction *textDecAct1;
-    QAction *textDecAct2;
 
     QAction *saveAsAct;
     QAction *exitAct;
@@ -165,6 +203,14 @@ private:
     QAction *copyAct;
     QAction *pasteAct;
 
+    QShortcut *tabNextKey;
+    QShortcut *tabPrevKey;
+    QShortcut *textIncKey2;
+    QShortcut *textDecKey2;
+    QShortcut *reloadKey;
+
+    QCheckBox *mixer_invert_stereo;
+    QCheckBox *mixer_force_mono;
     QCheckBox *print_output;
     QCheckBox *check_args;
     QCheckBox *clear_output_on_run;
@@ -172,7 +218,7 @@ private:
     QAction *aboutQtAct;
     QMap<QString, QString> *map;
 
-    QTextEdit *infoPane;
+    QTextBrowser *infoPane;
     QWidget *infoWidg;
     QTextEdit *startupPane;
     QLabel *imageLabel;
@@ -180,6 +226,12 @@ private:
 
     int currentLine;
     int currentIndex;
+
+    QList<QListWidget *> helpLists;
+    QHash<QString, help_entry> helpKeywords;
+    std::ofstream stdlog;
+
+    SonicPiAPIs *autocomplete;
 };
 
 #endif

@@ -25,8 +25,10 @@ require_relative "mods/sound"
 require_relative "gitsave"
 require_relative "lifecyclehooks"
 require_relative "version"
-#require_relative "oscval"
+require_relative "sthread"
+require_relative "oscval"
 #require_relative "oscevent"
+#require_relative "stream"
 
 require 'thread'
 require 'fileutils'
@@ -41,7 +43,7 @@ module SonicPi
 
     def initialize(hostname, port, msg_queue, max_concurrent_synths, user_methods)
 
-      @version = Version.new(2, 0, 1)
+      @version = Version.new(2, 1, 0)
 
       @life_hooks = LifeCycleHooks.new
       @msg_queue = msg_queue
@@ -72,13 +74,6 @@ module SonicPi
       __info "#{@version} Ready..."
     end
 
-    #These includes must happen after the initialize method
-    #as they may potentially redefine it to extend behaviour
-    include SonicPi::Mods::SPMIDI
-#    include SonicPi::Mods::Graphics
-    include SonicPi::Mods::Sound
-#    include SonicPi::Mods::Feeds
-    #    include SonicPi::Mods::GlobalKeys
 
     ## Not officially part of the API
     ## Probably should be moved somewhere else
@@ -124,6 +119,7 @@ module SonicPi
     end
 
     def __delayed_user_message(s)
+      s = s.round(4) if s.is_a? Float
       s = s.inspect unless s.is_a? String
       __enqueue_multi_message(1, s)
     end
@@ -308,7 +304,7 @@ module SonicPi
       id = id.to_s
       raise "Aborting load: file name is blank" if  id.empty?
       path = project_path + id + '.spi'
-      s = "# Welcome to Sonic Pi v2.0"
+      s = "# Welcome to Sonic Pi #{@version.to_s}"
       if File.exists? path
         s = IO.read(path)
       end
@@ -337,8 +333,13 @@ module SonicPi
 
     def __spider_eval(code, info={})
       id = @job_counter.next
+
+      # skip __nosave lines for error reporting
+      firstline = 1
+      firstline -= code.split(/\r?\n/).count{|l| l.include? "#__nosave__"}
+      start_t_prom = Promise.new
       job = Thread.new do
-        Thread.current.priority = 10
+        Thread.current.priority = 20
         begin
           num_running_jobs = reg_job(id, Thread.current)
           Thread.current.thread_variable_set :sonic_pi_thread_group, "job-#{id}"
@@ -356,11 +357,12 @@ module SonicPi
           @msg_queue.push({type: :job, jobid: id, action: :start, jobinfo: info})
           @life_hooks.init(id, {:thread => Thread.current})
           now = Time.now
+          start_t_prom.deliver! now
           Thread.current.thread_variable_set :sonic_pi_spider_time, now
           Thread.current.thread_variable_set :sonic_pi_spider_start_time, now
           @run_start_time = now if num_running_jobs == 1
           __info "Starting run #{id}"
-          eval(code)
+          eval(code, nil, info[:workspace] || 'eval', firstline)
           __schedule_delayed_blocks_and_messages!
         rescue Exception => e
           __no_kill_block do
@@ -382,8 +384,8 @@ module SonicPi
         # wait until all synths are dead
 
         @life_hooks.completed(id)
-
-        @life_hooks.exit(id)
+        start_t = start_t_prom.get
+        @life_hooks.exit(id, {:start_t => start_t})
 
         deregister_job_and_return_subthreads(id)
         @user_jobs.job_completed(id)
@@ -436,7 +438,7 @@ module SonicPi
         else
           # register this name with the corresponding job id and also
           # store it in a thread local
-          @named_subthreads[name] = job_id
+          @named_subthreads[name] = SThread.new(name, job_id, t)
           t.thread_variable_set :sonic_pi__not_inherited__spider_subthread_name, name
         end
       end
@@ -470,7 +472,7 @@ module SonicPi
       threads = @job_subthread_mutex.synchronize do
         threads = @job_subthreads[job_id]
         @job_subthreads.delete(job_id)
-        @named_subthreads.delete_if{|k,v| v == job_id}
+        @named_subthreads.delete_if{|k,v| v.job_id == job_id}
         @job_main_threads.delete(job_id)
         threads
       end
@@ -508,6 +510,11 @@ module SonicPi
 
     def filter_for_save(s)
       s.split(/\r?\n/).reject{|l| l.include? "#__nosave__"}.join("\n")
+    end
+
+    def sthread(name)
+      st = @named_subthreads[name]
+      st.thread if st
     end
   end
 end

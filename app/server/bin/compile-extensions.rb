@@ -31,10 +31,17 @@ native_dir = File.dirname(__FILE__) + '/../rb-native/' + os.to_s + '/' + "#{RUBY
 puts "creating #{native_dir}"
 FileUtils.mkdir_p native_dir
 
+# Rugged is used for storing the user's ruby music scripts in Git
+# FFI is used for MIDI lib support
 native_ext_dirs = [
   File.expand_path(File.dirname(__FILE__) + '/../vendor/rugged/ext/rugged'),
-  File.expand_path(File.dirname(__FILE__) + '/../vendor/ffi/ext/ffi_c')]
+  File.expand_path(File.dirname(__FILE__) + '/../vendor/ffi/ext/ffi_c'),
+  File.expand_path(File.dirname(__FILE__) + '/../vendor/atomic/ext'),
+  File.expand_path(File.dirname(__FILE__) + '/../vendor/ruby-prof/ext/ruby_prof/'),
 
+  File.expand_path(File.dirname(__FILE__) + '/../vendor/interception/ext/'),
+  File.expand_path(File.dirname(__FILE__) + '/../vendor/did_you_mean/ext/did_you_mean')
+]
 
 native_ext_dirs.each do |ext_dir|
     puts "Compiling native extension in #{ext_dir}"
@@ -53,7 +60,7 @@ libs = []
   when :osx
     libs = Dir[ext_dir + '/*.{bundle}']
   when :windows
-    libs = Dir[ext_dir + '/*.{dll}']
+    libs = Dir[ext_dir + '/*.{so}']
   end
 
   libs.each do |f|

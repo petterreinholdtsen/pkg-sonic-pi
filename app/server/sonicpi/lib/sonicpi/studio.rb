@@ -49,11 +49,11 @@ module SonicPi
 
     def reset_and_setup_groups_and_busses
       @server.clear_scsynth!
-      @mixer_bus = @server.allocate_audio_bus 2
-      @mixer_group = @server.create_group(:head, 0)
-      @fx_group = @server.create_group(:before, @mixer_group)
-      @synth_group = @server.create_group(:before, @fx_group)
-      @recording_group = @server.create_group(:after, @mixer_group)
+      @mixer_bus = @server.allocate_audio_bus
+      @mixer_group = @server.create_group(:head, 0, "STUDIO-MIXER")
+      @fx_group = @server.create_group(:before, @mixer_group, "STUDIO-FX")
+      @synth_group = @server.create_group(:before, @fx_group, "STUDIO-SYNTHS")
+      @recording_group = @server.create_group(:after, @mixer_group, "STUDIO-RECORDING")
     end
 
     def reset
@@ -74,12 +74,42 @@ module SonicPi
 
     def start_mixer
       message "Starting mixer"
-      @mixer = @server.trigger_synth(:head, @mixer_group, "sonic-pi-mixer", {"in_bus" => @mixer_bus})
+      @mixer = @server.trigger_synth(:head, @mixer_group, "sonic-pi-mixer", {"in_bus" => @mixer_bus.to_i})
     end
 
     def volume=(vol)
       message "Setting main volume to #{vol}"
       @server.node_ctl @mixer, {"amp" => vol}
+    end
+
+    def mixer_invert_stereo(invert)
+      # invert should be true or false
+      invert_i = invert ? 1 : 0
+      @server.node_ctl @mixer, {"invert_stereo" => invert_i}, true
+    end
+
+    def mixer_stereo_mode
+      @server.node_ctl @mixer, {"force_mono" => 0}, true
+    end
+
+    def mixer_mono_mode
+      @server.node_ctl @mixer, {"force_mono" => 1}, true
+    end
+
+    def mixer_hpf_enable(freq)
+      @server.node_ctl @mixer, {"hpf_pass_thru" => 0, "hpf_freq" => freq}, true
+    end
+
+    def mixer_lpf_enable(freq)
+      @server.node_ctl @mixer, {"lpf_pass_thru" => 0, "lpf_freq" => freq}, true
+    end
+
+    def mixer_lpf_disable
+      @server.node_ctl @mixer, {"lpf_pass_thru" => 1}, true
+    end
+
+    def mixer_hpf_disable
+      @server.node_ctl @mixer, {"hpf_pass_thru" => 1}, true
     end
 
     def status
@@ -91,20 +121,20 @@ module SonicPi
       @server.group_clear @synth_group
     end
 
-    def new_group(position, target)
-      @server.create_group(position, target)
+    def new_group(position, target, name="")
+      @server.create_group(position, target, name)
     end
 
-    def new_synth_group
-      new_group(:tail, @synth_group)
+    def new_synth_group(id=-1)
+      new_group(:tail, @synth_group, "Run-#{id}-Synths")
     end
 
-    def new_fx_group
-      new_group(:tail, @fx_group)
+    def new_fx_group(id=-1)
+      new_group(:tail, @fx_group, "Run-#{id}-FX")
     end
 
     def new_fx_bus
-      @server.allocate_audio_bus 2
+      @server.allocate_audio_bus
     end
 
     def exit
@@ -119,12 +149,20 @@ module SonicPi
       @server.sched_ahead_time = t
     end
 
+    def control_delta
+      @server.control_delta
+    end
+
+    def control_delta=(t)
+      @server.control_delta = t
+    end
+
     def recording_start(path, bus=0)
       return false if @recorders[bus]
       @recording_mutex.synchronize do
         return false if @recorders[bus]
         bs = @server.buffer_stream_open(path)
-        s = @server.trigger_synth :head, @recording_group, "sonic-pi-recorder", {"out-buf" => bs.to_i, "in_bus" => bus}, true
+        s = @server.trigger_synth :head, @recording_group, "sonic-pi-recorder", {"out-buf" => bs.to_i, "in_bus" => bus.to_i}, true
         @recorders[bus] = [bs, s]
         true
       end

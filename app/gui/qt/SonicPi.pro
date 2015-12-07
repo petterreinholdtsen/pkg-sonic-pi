@@ -17,21 +17,31 @@
 #
 #-------------------------------------------------
 
-QT       += core gui
+QT       += core gui concurrent
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
-TARGET = 'Sonic-Pi'
+
+TARGET = 'sonic-pi'
+
+macx {
+TARGET = 'Sonic Pi'
+}
+
 TEMPLATE = app
 
 SOURCES += main.cpp \
            mainwindow.cpp \
-           sonicpilexer.cpp
+           sonicpilexer.cpp \
+           sonicpiapis.cpp \
+           sonicpiscintilla.cpp
 
 HEADERS  += mainwindow.h \
             oscpkt.hh \
             udp.hh \
-            sonicpilexer.h
+            sonicpilexer.h \
+            sonicpiapis.h \
+            sonicpiscintilla.h
 
 OTHER_FILES += \
     images/copy.png \
@@ -47,5 +57,24 @@ RESOURCES += \
     help_files.qrc  \
     info_files.qrc
 
+RC_FILE = SonicPi.rc
+
 ICON = images/app.icns
 LIBS         += -lqscintilla2
+
+win32 {
+	install_qsci.files = $$[QT_INSTALL_LIBS]\qscintilla2.dll
+	install_qsci.path = release
+
+	install_bat.files = sonic-pi.bat
+	install_bat.path = ..\..\..
+
+	INSTALLS += install_qsci install_bat
+	# allow to run on XP
+	QMAKE_SUBSYSTEM_SUFFIX = ,5.01
+}
+
+# not unicode ready
+win32 {
+  DEFINES -= UNICODE DEFINES += _MBCS
+}

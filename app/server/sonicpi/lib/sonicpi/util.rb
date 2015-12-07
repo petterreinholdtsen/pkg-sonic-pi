@@ -33,11 +33,28 @@ module SonicPi
       end
     end
 
+    def num_audio_busses_for_current_os
+      if os == :raspberry
+        64
+      else
+        1024
+      end
+
+    end
+
     def default_sched_ahead_time
       if (os == :raspberry)
         1
       else
         0.2
+      end
+    end
+
+    def default_control_delta
+      if (os == :raspberry)
+        0.02
+      else
+        0.005
       end
     end
 
@@ -122,12 +139,54 @@ module SonicPi
       File.absolute_path("#{server_path}/native/#{os}")
     end
 
+    def log_raw(s)
+        # TODO: consider moving this into a worker thread to reduce file
+        # io overhead:
+      File.open("#{log_path}/debug.log", 'a') {|f| f.write("[#{Time.now.strftime("%Y-%m-%d %H:%M:%S")}] #{s}")}
+    end
+
+    def log_exception(e, context="")
+      if debug_mode
+        res = "Exception => #{context} #{e.message}"
+        e.backtrace.each do |b|
+          res << "                                        "
+          res << b
+          res << "\n"
+        end
+        log_raw res
+      end
+    end
+
     def log(message)
-      File.open("#{log_path}/sonicpi.log", 'a') {|f| f.write("#{Time.now.strftime("%Y-%m-%d %H:%M:%S")} #{message}\n")} if debug_mode
+      if debug_mode
+        res = ""
+        first = true
+        while !(message.empty?)
+          if first
+            res << message.slice!(0..151)
+            res << "\n"
+            first = false
+          else
+            res << "                                        "
+            res << message.slice!(0..133)
+            res << "\n"
+
+          end
+        end
+        log_raw res
+      end
     end
 
     def debug_mode
-      false
+      true
+    end
+
+    def osc_debug_mode
+      true
+    end
+
+    def incoming_osc_debug_mode
+      true
     end
 
     def resolve_synth_opts_hash_or_array(opts)
@@ -143,14 +202,27 @@ module SonicPi
           when Hash
             return opts[0]
           else
-            raise "Invalid options. Options should either be an even list of key value pairs or a single Hash. Got #{opts.inspect}"
+            raise "Invalid options. Options should either be an even list of key value pairs, a single Hash or nil. Got #{opts.inspect}"
           end
         when 0
           return {}
         end
+      when NilClass
+        return {}
       else
-        raise "Invalid options. Options should either be an even list of key value pairs or a single Hash. Got #{opts.inspect}"
+        raise "Invalid options. Options should either be an even list of key value pairs, a single Hash or nil. Got #{opts.inspect}"
       end
     end
+
+    def arg_h_pp(arg_h)
+      s = "{"
+      arg_h.each do |k, v|
+        rounded = v.is_a?(Float) ? v.round(4) : v
+        s << "#{k}: #{rounded}, "
+      end
+      s.chomp(", ") << "}"
+    end
+
+
   end
 end
