@@ -19,6 +19,7 @@ module SonicPi
     @@project_path = nil
     @@log_path = nil
     @@current_uuid = nil
+    @@raspberry_pi_1 = RUBY_PLATFORM.match(/.*arm.*-linux.*/) && File.exists?('/proc/cpuinfo') && !(`cat /proc/cpuinfo | grep ARMv6`.empty?)
 
     def os
       case RUBY_PLATFORM
@@ -34,6 +35,15 @@ module SonicPi
         raise "Unsupported platform #{RUBY_PLATFORM}"
       end
     end
+
+    def raspberry_pi_1?
+      os == :raspberry && @@raspberry_pi_1
+    end
+
+    def raspberry_pi_2?
+      os == :raspberry && !@@raspberry_pi_1
+    end
+
 
     def num_audio_busses_for_current_os
       if os == :raspberry
@@ -53,8 +63,10 @@ module SonicPi
     end
 
     def default_control_delta
-      if (os == :raspberry)
+      if raspberry_pi_1?
         0.02
+      elsif raspberry_pi_2?
+        0.013
       else
         0.005
       end
@@ -112,6 +124,10 @@ module SonicPi
 
     def etc_path
       File.absolute_path("#{root_path}/etc")
+    end
+
+    def snippets_path
+      File.absolute_path("#{etc_path}/snippets")
     end
 
     def doc_path

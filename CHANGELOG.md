@@ -1,10 +1,172 @@
 # History
+* [v2.6 'Algorave'](#v2.6), 30th July, 2015
 * [v2.5 'Craft'](#v2.5), 13th April, 2015
-* [v2.4 'Defrost'](#v2.4), 11th Feb, 2015 
+* [v2.4 'Defrost'](#v2.4), 11th Feb, 2015
 * [v2.3 'Bitcrush'](#v2.3), 28th Jan, 2015
 * [v2.2 'Slicer'](#v2.2), 18th Dec, 2014
 * [v2.1 'Core'](#v2.1), 21st Nov, 2014
 * [v2.0 'Phoenix'](#v2.0), 2nd Sept, 2014
+
+<a name="v2.6"></a>
+
+## Version 2.6 - 'Algorave'
+*Thursday 30th July, 2015*
+[(view commits)](https://github.com/samaaron/sonic-pi/commits/v2.6.0)
+
+
+The laser beams sliced through the wafts of smoke as the subwoofer
+pumped bass deep into the bodies of the crowd. The atmosphere was ripe
+with a heady mix of synths and dancing. However something wasn't quite
+right in this nightclub. Projected in bright colours above the DJ booth
+was futuristic text, moving, dancing, flashing. This wasn't fancy
+visuals, it was merely a projection of Sonic Pi running on a Raspberry
+Pi. The occupant of the DJ booth wasn't spinning disks or playing MP3s,
+she was writing, editing and evaluating code. She was *live coding* and
+this was an [Algorave](http://twitter.com/algorave).
+
+This release is codenamed [Algorave](http://twitter.com/algorave) to
+celebrate that Sonic Pi is now ready to be performed within nightclubs
+as well as still being a fantastic tool for learning how to code
+creatively. There are many improvements as detailed below. However,
+let's just take a brief look at some of the most fun. Firstly we have
+the new error reporting system to make it easier to find and debug your
+errors. Syntax errors are now blue and runtime errors pink. We also have
+a new look and feel including a new dark mode for performing in dark
+places. We also have some fantastic new synths, FX and have even
+improved the standard synths. For example, `sample` now lets you stretch
+to match the beat with the `beat_stretch:` opt and change pitch with
+`pitch:`. The `slicer` FX now sports a fantastic deterministic
+`probability:` opt for creating and manipulating rhythmic structures
+with ease. Finally there's the new thread local `tick`/`look` system
+which will revolutionise the way you work with `ring`s within
+`live_loop`s. Of course there's so much more too!
+
+Enjoy this release and happy [Algoraving!](http://algorave.com)
+
+### Breaking Changes
+
+* The `res:` opt for all synths and FX now has range 0->1 rather than
+  1->0. This means that a higher res value results in more
+  resonance. This will hopefully be more intuitive to beginners less
+  surprising for people with existing synth knowledge.
+* The fn `stop` has been renamed to `kill` for killing specific
+  synths. In its place a new fn `stop` has been added to stop a given
+  thread or `live_loop`.
+* `invert_wave` opts are now inverted. The default is now 0 which
+  has the same behaviour as the old 1.  This means that it's more
+  intuitive to use the opt as to invert the current wave, you now
+  specify: `invert_wave: true`, rather than `invert_wave: false`. This
+  shouldn't affect any code which doesn't explicitly set the `invert_wave:`
+  opt. Pieces which have explicit inversion need to swap all 0s for 1s
+  and visa versa.
+* The `res:` opt for `rrand` and `rdist` has been renamed to `step:` to
+  avoid confusion with the resonance opt for cutoff filters.
+* Rename `pitch_ratio` to `pitch_to_ratio` to keep in line with other
+  similar fns such as `midi_to_hz`.
+
+
+### New
+
+* New thread-local (i.e. live_loop local) counter system via fns `tick`
+  and `look`.
+* New fn `vector` which creates a new kind of Array - an immutable
+  vector (`SPVector`) which is now the default base class for all rings.
+* New fns `use_sample_defaults` and `with_sample_defaults` which act
+  similarly as their `*_synth_defaults` counterparts but for samples not
+  synths.
+* New fns `use_tuning` and `with_tuning` for exploring other tuning
+  systems such as `:just`, `:pythagorean`, and `:meantone`.
+* New fn `invert_chord` for chord inversions.  
+* New fn `current_beat_duration` for returning the duration of the
+  current beat in seconds.
+* New fn `note_range` for returning a range of notes between two notes
+  with a `pitches:` opt for constraining the choice of filler notes.
+* New fns `scale_names` and `chord_names` for returning a ring of all
+  chords and scales.
+* New example `rerezzed` - strongly influenced by Daft Punk's track
+  `derezzed`.
+* New example `reich phase` - a nice way of combining `live_loop`s and
+  `tick` to create sophisticated polyrhythms.
+* New fns `use_cue_logging` and `with_cue_logging` for enabling and
+  disabling the logging of `cue` messages.
+* It is now possible to set the block type in the Minecraft API.
+
+
+### GUI  
+* New visual look and feel including a new Dark Mode for live coding in
+  night clubs.
+* New preferences for hiding/showing aspects of the GUI such as the
+  buttons, log, tabs etc.
+* New preference for full screen mode.
+* Improve error message reporting. Syntax errors are now made distinct
+  from runtime errors with colour-coded messages. Also, the line number
+  of the error is much more visible, and the line of the error is
+  highlighted with an arrow in the left-hand margin.
+* Workspaces are now named buffers. This is a smaller word which works
+  better on lower res screens and is also a lovely term used by a number
+  of wonderful programming editors such as Emacs.
+* Print friendly messages to the log on boot.  
+* Add pref option to check for updates now.
+
+
+### Synths & FX
+
+* New FX - `krush` for krushing the sound.
+* New FX - `panslicer` similar to `slicer` and `wobble` but modulates
+  the stereo panning of the audio.
+* New synth `subpulse` for a full range pulse with extra bass.
+* New synth `blade` - a moody Blade Runner-esque synth violin
+* New synth `piano` - a basic piano emulation. Only capable of whole notes.
+* FXs `slicer` and `wobble` now have a wonderful new `probability:` opt
+  which will only slice on (or off depending on wave inversion) with the
+  specified probability. The behaviour is deterministic, so repeated
+  calls with the same `seed:` and `probability:` opts will result in the
+  same behaviour. Great for adding interesting rhythmic variation to
+  sound.
+* FXs `slicer` and `wobble` now have smoothing opts for even more
+  control over the resulting wave form.
+* Teach `sample` the opt `beat_stretch:` for modifying the rate of the
+  sample to make sure the duration of the sample is n beats long (with
+  respect to the current bpm). Note: stretching the beat *does* change
+  the pitch.
+* Teach `sample` the opt `pitch` to enable pitch shifting on any sample.  
+* FX `flanger`'s feedback mixing is now more fair and is less likely to
+  hike up the amplitude.
+
+
+### Improvements
+
+* Teach `note_info` to also handle a number as its param.
+* Teach `factor?` to handle division by 0.
+* Teach `load_sample` to throw exception when passed an empty path.
+* Now throws an exception when you attempt to create an empty ring.
+* Rings are now immutable (in the Clojure sense) which means they can be
+  safely passed to multiple threads/live_loops without any issues.
+* Teach `use_sample_bpm` the opt `num_beats:` to indicate that a given
+  sample consists of a specific number of beats.
+* Teach `comment` and `uncomment` to require blocks.  
+* Teach synth chord groups to allow their notes to be controlled
+  individually to allow transitions between chords.
+* Throw nicer exception when unable to normalise synth args  
+* Teach `chord` the new opt `invert:` as a shortcut to the new
+  `invert_chord` fn.
+* Teach `sample_duration` about the opts `start:` and `finish:` and
+  envelope opts such as `attack:` and `release:`. This allows you to
+  replace any call to `sample` with `sample_duration` to get the exact
+  duration of that call.
+* Teach `chord` the opt `num_octaves` to enable the easy creation of
+  arpeggios.
+
+
+### Bug Fixes
+
+* Fix bug in `with_sample_pack_as` to now correctly accept a block.
+* `mx_surface_teleport` no longer throws an error.
+* `Array#shuffle` now works correctly with the random seeds for
+  deterministic behaviour.
+* Fix broken behaviour with multiple nested calls to `*_sample_bpm`.
+
+
 
 <a name="v2.5"></a>
 
@@ -24,7 +186,7 @@ by [GNU Emacs](https://www.gnu.org/software/emacs/) - the oldest and
 most powerful text editor in use by wizard programmers today.
 
 ### Breaking Changes
-    
+
 * `invert_wave` now defaults to 1 everywhere. I found I always inverted
    the wave every time I used a synth/fx where wave inversion was
    key. This seemed like such a better default I've broken compatibility
@@ -38,9 +200,9 @@ most powerful text editor in use by wizard programmers today.
 
 ### New
 
-* Support for programming [Minecraft Pi Edition](http://pi.minecraft.net).
+1* Support for programming [Minecraft Pi Edition](http://pi.minecraft.net).
 * `sync` now accepts multiple cue ids and will sync on the first matching id.
-* New fn `pitch_ratio` for converting a midio note to a frequency
+* New fn `pitch_ratio` for converting a midi note to a frequency
   ratio. Useful for tuning samples.
 * New fn `line` for creating a line from start to finish with a specific
   number of slices.
@@ -56,10 +218,10 @@ most powerful text editor in use by wizard programmers today.
 * German translation of GUI and tutorial. Simply open Sonic Pi with a
   machine with a German localisation setting.
 * Display GUI fully maximised when opening for first ever time.
-* Workpace indexing now starts at 0 to match standard programming indexes.
+* Workspace indexing now starts at 0 to match standard programming indexes.
 * New shortcuts - `M-<` and `M->` for switching workspaces.
-* Many new Emacs-based code navigation and editing shortcuts. See
-  shortcut cheatsheet in tutorial for more information.
+* Many new Emacs-based code navigation and editing shortcuts. See the
+  shortcut cheatsheet in the built-in tutorial for more information.
 * Increase height of doc and error panes.
 * Improve error pane colour scheme.
 * Auto-align now trims whitespace from start and end of buffer.
@@ -129,11 +291,11 @@ fun!
 * New Synth `:growl`, a deep rumbling growl.
 * Sampler synths now sport built-in `rlpf` and `normaliser` FX. These
   are disabled by default (i.e. won't affect sound of the sample) and
-  can by enabled via the new `cutoff:`, `res:` and `norm:` params. 
+  can by enabled via the new `cutoff:`, `res:` and `norm:` params.
 
 ### Bug Fixes
 
-* Fix insanely obsure bug which caused the GUI to freeze on certain
+* Fix insanely obscure bug which caused the GUI to freeze on certain
   platforms (32 bit Windows and RP2 with 2G/2G kernel).
 * Remove DC Bias offset from Prophet synth (see
   http://en.wikipedia.org/wiki/DC_bias)
@@ -147,7 +309,7 @@ fun!
 
 ### Breaking Changes
 
-* Playing chords with the fn `chord` now divides the amplitiude of each
+* Playing chords with the fn `chord` now divides the amplitude of each
   resulting synth by the number of notes in the chord. This ensures the
   resulting amplitude isn't excessive and is normalised.
 * Chords now evaluate their args once and those args are used for all
@@ -182,7 +344,7 @@ fun!
   resolves to `1.0` and `false`, `nil` resolve to `0.0`. This allows you
   to write code such as: `play :e3, invert_wave: true`
 * Teach `at` to handle varying block arities differently. See docs for
-  more detail. Original behaviour is preserved and only extended. 
+  more detail. Original behaviour is preserved and only extended.
 * App now checks for updates (at most once every 2 weeks). This may be
   disabled in the prefs.
 * Teach `:reverb` FX to extend its kill delay time with larger room
@@ -204,7 +366,7 @@ fun!
 * `perc_snap` - a finger snap
 * `perc_snap2` - another finger snap
 * `bd_ada` - a bass drum
-* `guit_em9` - a lovely guitar arpegio over Em9
+* `guit_em9` - a lovely guitar arpeggio over Em9
 
 ### Bug Fixes
 
@@ -244,7 +406,7 @@ and echoes.
 * Work on new `RingArray` datastructure. This is essentially an array
   that wraps its indexes so you can use indexes larger than the array size.
 * New fn `ring` - `(ring 1, 2, 3)` creates a new ring array.
-* New fn `knit` - `(knit :a1, 2, :c1, 1)` returns `(ring :a1, :a1, :c1)` 
+* New fn `knit` - `(knit :a1, 2, :c1, 1)` returns `(ring :a1, :a1, :c1)`
 * New fn `bools` - `(bools 1, 0, 1)` returns `(ring true, false, true)`
 * New fn `range` - `(range 70, 100, 10)` returns `(ring 70, 80, 90, 100)`
 * New fn `sample_loaded?` - to detect whether a specific sample has been loaded
@@ -287,7 +449,7 @@ and echoes.
 [(view commits)](https://github.com/samaaron/sonic-pi/commits/v2.1.0)
 
 The focus of release is very much on technical improvements, efficiency
-and general polish. 
+and general polish.
 
 The most obvious and exciting change is the introduction of the
 `live_loop` which will change the way you work with Sonic Pi. For more
@@ -312,10 +474,10 @@ Riley, Jeremy Weatherford and Joseph Wilk.
 * New fn `rest?` - Determine if note or args is a rest
 * New fn `vt` - Get virtual time
 * New fn `set_control_delta!` - Set control delta globally
-* `wait` now handles both `sleep` and `sync` functionality 
+* `wait` now handles both `sleep` and `sync` functionality
 * Allow first arg to `play` to be a proc or lambda. In which case simple call it and use the result as the note
 * Teach `play` to accept a single map argument (in which case it will extract `:note` key out if it exists.
-* Fns `play` and `synth` now treat 'notes' `nil`, `:r` and `:rest` as rests and don't trigger any synths. 
+* Fns `play` and `synth` now treat 'notes' `nil`, `:r` and `:rest` as rests and don't trigger any synths.
 
 
 ### GUI Modifications
@@ -354,12 +516,12 @@ Riley, Jeremy Weatherford and Joseph Wilk.
 * Allow `mod_range` param to have negative values (for oscillating with lower notes)
 * Change slide mechanism to default to linear sliding with support for changing the curve type. All modifiable args now have corresponding  `_slide_shape` and `_slide_curve` args.
 * Improve TB303 synth - now supports separate cutoff ADSR envelopes. New args:
-  - `cutoff_attack`, 
-  - `cutoff_sustain`, 
-  - `cutoff_decay`, 
-  - `cutoff_release`, 
-  - `cutoff_min_slide`, 
-  - `cutoff_attack_level`, 
+  - `cutoff_attack`,
+  - `cutoff_sustain`,
+  - `cutoff_decay`,
+  - `cutoff_release`,
+  - `cutoff_min_slide`,
+  - `cutoff_attack_level`,
   - `cutoff_sustain_level`,
   - `cutoff_env_curve`
 
@@ -391,7 +553,7 @@ Riley, Jeremy Weatherford and Joseph Wilk.
 * Support for Live Coding - redefining behaviour whilst music is playing
 * New timing system - timing now guaranteed to be accurate
 * Many new synths
-* New chainable studio FX system 
+* New chainable studio FX system
 * Support for sample playback
 * Inclusion of over 70 CC0 licensed samples from http://freesound.org
 * Support for controlling and modifying synth, fx and sample playback
@@ -400,4 +562,3 @@ Riley, Jeremy Weatherford and Joseph Wilk.
 * Help system with full documentation, tutorial and many examples
 * Record functionality (for recording performances/pieces)
 * Support for controlling system audio settings on RP
-

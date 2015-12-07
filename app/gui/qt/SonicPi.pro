@@ -19,9 +19,9 @@
 
 # -- Change to match the location of QScintilla on your system
 #
-# LIBS += -L/Users/sam/Downloads/tmp/QScintilla-gpl-2.8.5-snapshot-62d128cc92de/Qt4Qt5 -lqscintilla2
-# INCLUDEPATH += /Users/sam/Downloads/tmp/QScintilla-gpl-2.8.5-snapshot-62d128cc92de/Qt4Qt5
-# DEPENDPATH += /Users/sam/Downloads/tmp/QScintilla-gpl-2.8.5-snapshot-62d128cc92de/Qt4Qt5
+ LIBS += -L/Users/sam/Downloads/tmp/QScintilla-gpl-2.9/Qt4Qt5 -lqscintilla2
+ INCLUDEPATH += /Users/sam/Downloads/tmp/QScintilla-gpl-2.9/Qt4Qt5
+ DEPENDPATH += /Users/sam/Downloads/tmp/QScintilla-gpl-2.9/Qt4Qt5
 # --
 
 QT       += core gui concurrent network
@@ -43,7 +43,7 @@ macx {
 }
 win32 {
   QMAKE_CXXFLAGS += /WX
-  DEFINES += _CRT_SECURE_NO_WARNINGS
+  DEFINES += _CRT_SECURE_NO_WARNINGS _WINSOCK_DEPRECATED_NO_WARNINGS
 }
 
 CODECFORSRC = UTF-8
@@ -59,7 +59,8 @@ SOURCES += main.cpp \
            oschandler.cpp \
            sonicpiserver.cpp \
            sonicpiudpserver.cpp \
-           sonicpitcpserver.cpp
+           sonicpitcpserver.cpp \
+           sonicpitheme.cpp
 win32 {
 # have to link these explicitly for some reason
   SOURCES += platform/win/moc_qsciscintilla.cpp \
@@ -76,7 +77,8 @@ HEADERS  += mainwindow.h \
             sonicpiserver.h \
             sonicpiudpserver.h \
             ruby_help.h \
-            sonicpitcpserver.h
+            sonicpitcpserver.h \
+            sonicpitheme.h
 
 TRANSLATIONS = lang/sonic-pi_de.ts
 

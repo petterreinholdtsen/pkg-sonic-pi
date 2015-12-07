@@ -133,8 +133,8 @@ osc_server.add_method("/save-and-run-buffer") do |payload|
     buffer_id = args[0]
     code = args[1]
     workspace = args[2]
-    sp.__spider_eval code, {workspace: workspace}
     sp.__save_buffer(buffer_id, code)
+    sp.__spider_eval code, {workspace: workspace}
   rescue Exception => e
     puts "Caught exception when attempting to save and run buffer!"
     puts e.message
@@ -189,7 +189,7 @@ osc_server.add_method("/load-buffer") do |payload|
   end
 end
 
-osc_server.add_method("/indent-selection") do |payload|
+osc_server.add_method("/complete-snippet-or-indent-selection") do |payload|
 #  puts "indenting current line..."
   begin
     args = payload.to_a
@@ -199,7 +199,7 @@ osc_server.add_method("/indent-selection") do |payload|
     finish_line = args[3]
     point_line = args[4]
     point_index = args[5]
-    sp.__indent_lines(id, buf, start_line, finish_line, point_line, point_index)
+    sp.__complete_snippet_or_indent_lines(id, buf, start_line, finish_line, point_line, point_index)
   rescue Exception => e
     puts "Received Exception when attempting to indent current line!"
     puts e.message
@@ -393,6 +393,30 @@ osc_server.add_method("/disable-update-checking") do |payload|
   end
 end
 
+osc_server.add_method("/check-for-updates-now") do |payload|
+  begin
+    sp.__update_gui_version_info_now
+  rescue Exception => e
+    puts "Received Exception when attempting to check for latest version now"
+    puts e.message
+    puts e.backtrace.inspect
+  end
+end
+
+osc_server.add_method("/version") do |payload|
+  begin
+    v = sp.__current_version
+    lv = sp.__server_version
+    lc = sp.__last_update_check
+    m = encoder.encode_single_message("/version", [v.to_s, v.to_i, lv.to_s, lv.to_i, lc.day, lc.month, lc.year])
+    gui.send_raw(m)
+  rescue Exception => e
+    puts "Received Exception when attempting to check for version "
+    puts e.message
+    puts e.backtrace.inspect
+  end
+end
+
 if protocol == :tcp
   Thread.new{osc_server.safe_run}
 else
@@ -423,14 +447,22 @@ out_t = Thread.new do
         when :info
           m = encoder.encode_single_message("/info", [message[:val]])
           gui.send_raw(m)
+        when :syntax_error
+          desc = message[:val] || ""
+          line = message[:line] || -1
+          error_line = message[:error_line] || ""
+          desc = CGI.escapeHTML(desc)
+          m = encoder.encode_single_message("/syntax_error", [message[:jobid], desc, error_line, line, line.to_s])
+          gui.send_raw(m)
         when :error
           desc = message[:val] || ""
           trace = message[:backtrace].join("\n")
+          line = message[:line] || -1
           # TODO: Move this escaping to the Qt Client
           desc = CGI.escapeHTML(desc)
           trace = CGI.escapeHTML(trace)
           # puts "sending: /error #{desc}, #{trace}"
-          m = encoder.encode_single_message("/error", [message[:jobid], desc, trace])
+          m = encoder.encode_single_message("/error", [message[:jobid], desc, trace, line])
           gui.send_raw(m)
         when "replace-buffer"
           buf_id = message[:buffer_id]
@@ -451,8 +483,16 @@ out_t = Thread.new do
 #          puts "replacing line #{buf_id}, #{content}"
           m = encoder.encode_single_message("/replace-lines", [buf_id, content, start_line, finish_line, point_line, point_index])
           gui.send_raw(m)
+        when :version
+          v = message[:version]
+          v_num = message[:version_num]
+          lv = message[:latest_version]
+          lv_num = message[:latest_version_num]
+          lc = message[:last_checked]
+          m = encoder.encode_single_message("/version", [v.to_s, v_num.to_i, lv.to_s, lv_num.to_i, lc.day, lc.month, lc.year])
+          gui.send_raw(m)
         else
-#          puts "ignoring #{message}"
+          puts "ignoring #{message}"
         end
 
       end
