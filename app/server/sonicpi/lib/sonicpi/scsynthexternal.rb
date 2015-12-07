@@ -155,10 +155,12 @@ module SonicPi
       end
 
       t1 = Thread.new do
+        Thread.current.thread_variable_set(:sonic_pi_thread_group, :scsynth_external_booter)
         boot_s.run
       end
 
       t2 = Thread.new do
+        Thread.current.thread_variable_set(:sonic_pi_thread_group, :scsynth_external_boot_ack)
         loop do
           begin
             boot_s.send(OSC::Message.new("/status"), @hostname, @port)
@@ -172,7 +174,7 @@ module SonicPi
       yield
 
       begin
-        p.get_with_timeout(10, 0.2)
+        p.get(10)
       rescue Exception => e
         boot_s.send(OSC::Message.new("/quit"), @hostname, @port)
       ensure

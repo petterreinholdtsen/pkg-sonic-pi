@@ -112,7 +112,11 @@ play bar # plays 80"]
 
     def define(name, &block)
       raise "define must be called with a code block" unless block
-      __info "Defining #{name}"
+      if @user_methods.method_defined? name
+        __info "Redefining #{name}"
+      else
+        __info "Defining #{name}"
+      end
       @user_methods.send(:define_method, name, &block)
     end
     doc name:           :define,
@@ -645,8 +649,12 @@ play 62
     def cue(cue_id)
       __no_kill_block do
         Kernel.sleep @sync_real_sleep_time
-        @events.event("/spider_thread_sync/" + cue_id.to_s, {:time => Thread.current.thread_variable_get(:sonic_pi_spider_time)})
-        __delayed_message "cue #{cue_id.to_sym.inspect}"
+payload = {
+          :time => Thread.current.thread_variable_get(:sonic_pi_spider_time),
+          :run => current_job_id
+         }
+        __delayed_highlight_message "cue #{cue_id.to_sym.inspect}"
+        @events.event("/spider_thread_sync/" + cue_id.to_s, payload)
       end
     end
     doc name:           :cue,
@@ -717,6 +725,7 @@ end"
 
 
     def sync(cue_id)
+      __delayed_highlight3_message "sync #{cue_id.to_sym.inspect}"
       __schedule_delayed_blocks_and_messages!
       p = Promise.new
       @events.oneshot_handler("/spider_thread_sync/" + cue_id.to_s) do |payload|
@@ -724,7 +733,9 @@ end"
       end
       payload = p.get
       time = payload[:time]
+      run_id = payload[:run]
       Thread.current.thread_variable_set :sonic_pi_spider_time, time
+      __delayed_highlight2_message "synced #{cue_id.to_sym.inspect} (Run #{run_id})"
       cue_id
     end
     doc name:           :sync,
@@ -813,6 +824,8 @@ end"]
 
       # Create the new thread
       t = Thread.new do
+        Thread.current.thread_variable_set(:sonic_pi_thread_group, :job_subthread)
+
         main_t = Thread.current
         main_t.priority = 10
 
@@ -828,7 +841,7 @@ end"]
           end
         end
 
-        Thread.current.thread_variable_set(:sonic_pi_thread_group, :job_subthread)
+
         # Copy thread locals across from parent thread to this new thread
         parent_t_vars.each do |k,v|
           Thread.current.thread_variable_set(k, v) unless k.to_s.start_with? "sonic_pi__not_inherited__"
