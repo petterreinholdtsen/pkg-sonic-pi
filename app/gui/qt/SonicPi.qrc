@@ -30,6 +30,8 @@
         <file>images/tutorial/env-long-attack-short-release.png</file>
         <file>images/tutorial/env-release.png</file>
         <file>images/tutorial/env-short-attack-short-release.png</file>
+        <file>images/tutorial/env-decay-level.png</file>
+        <file>images/tutorial/env-decay-level-2.png</file>
         <file>images/tutorial/GUI.png</file>
 
         <file>images/coreteam/samaaron.png</file>
@@ -46,5 +48,9 @@
 
         <file>lang/sonic-pi_de.qm</file>
         <file>lang/sonic-pi_is.qm</file>
+        <file>lang/sonic-pi_ja.qm</file>
+        <file>lang/sonic-pi_pl.qm</file>
+        <file>lang/sonic-pi_fr.qm</file>
+        <file>lang/sonic-pi_es.qm</file>
     </qresource>
 </RCC>
