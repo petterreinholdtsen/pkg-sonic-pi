@@ -1,4 +1,94 @@
 # History
+* [v2.5 'Craft'](#v2.5), 13th April, 2015
+* [v2.4 'Defrost'](#v2.4), 11th Feb, 2015 
+* [v2.3 'Bitcrush'](#v2.3), 28th Jan, 2015
+* [v2.2 'Slicer'](#v2.2), 18th Dec, 2014
+* [v2.1 'Core'](#v2.1), 21st Nov, 2014
+* [v2.0 'Phoenix'](#v2.0), 2nd Sept, 2014
+
+<a name="v2.5"></a>
+
+## Version 2.5 - 'Craft'
+*Monday 13th April, 2015*
+[(view commits)](https://github.com/samaaron/sonic-pi/commits/v2.5.0)
+
+This release comes with support for
+[Minecraft: Pi Edition](http://pi.minecraft.net) installed on the
+Raspberry Pi. You can now create music with Minecraft visuals or even
+code up a synth score in Minecraft blocks and read and play the score
+from Sonic Pi! Another exciting aspect of this release is much improved
+editor functionality for navigating around and manipulating code via
+keyboard shortcuts. This means that live coding just got a lot more
+fun. The keyboard shortcuts are based on the standard shortcuts provided
+by [GNU Emacs](https://www.gnu.org/software/emacs/) - the oldest and
+most powerful text editor in use by wizard programmers today.
+
+### Breaking Changes
+    
+* `invert_wave` now defaults to 1 everywhere. I found I always inverted
+   the wave every time I used a synth/fx where wave inversion was
+   key. This seemed like such a better default I've broken compatibility
+   for it. Apologies if this has affected you.
+* The `flanger` FX now defaults the optional arg `stereo_invert_wave` to
+  1.
+* Renamed FX `ring` to `ring_mod` to reduce the potential for confusion
+  with the `ring` datastructure.
+* `Tab` now indents current line or selection rather than inserting a
+  useless tab character.
+
+### New
+
+* Support for programming [Minecraft Pi Edition](http://pi.minecraft.net).
+* `sync` now accepts multiple cue ids and will sync on the first matching id.
+* New fn `pitch_ratio` for converting a midio note to a frequency
+  ratio. Useful for tuning samples.
+* New fn `line` for creating a line from start to finish with a specific
+  number of slices.
+* New fn `spark` for displaying lists of numbers in a fancy text-graph
+  (`▁▃▅▇`) in the log.
+* On stop, amplitude of output slides down over 1s to silence for a
+  smoother transition.
+* `sample_duration` now scales result based on current BPM.
+* `range` now accepts optional args: `inclusive:` and `step:`.
+
+
+### GUI
+* German translation of GUI and tutorial. Simply open Sonic Pi with a
+  machine with a German localisation setting.
+* Display GUI fully maximised when opening for first ever time.
+* Workpace indexing now starts at 0 to match standard programming indexes.
+* New shortcuts - `M-<` and `M->` for switching workspaces.
+* Many new Emacs-based code navigation and editing shortcuts. See
+  shortcut cheatsheet in tutorial for more information.
+* Increase height of doc and error panes.
+* Improve error pane colour scheme.
+* Auto-align now trims whitespace from start and end of buffer.
+* Add preference toggle to hide/show line numbers.
+* Documentation now supports semantic formatting and highlighting.
+* Docsystem tabs are now positioned at the bottom for better navigation.
+* New preference to hide/show line numbers in editor.
+
+### Synths & FX
+
+* New FX - `:pitch_shift`  
+
+### Bug Fixes
+
+* Fix OSC lib to properly encode multibyte chars such as UTF8
+* Fix sporadic issue on some platforms when trigging percussive sounds
+  within a `reverb` FX caused a serious audio overload.
+* Add missing fn metadata for `*_sample_bpm`
+* Fix synth metadata for FX `:bpf`.
+* Fix arg metadata for `use_sample_pack_as`  
+* Rings now pretty print themselves as `(ring 1, 2, 3)` rather than `[1, 2, 3]`.
+* `C-k` keyboard shortcut now copies text into the clipboard.
+* Scales and chords now return actual `ring`s rather than `ring`-like
+  things.
+* Improve Ring Mod FX arguments
+* Exceptions created within `with_fx` are now raised correctly.
+
+
+ <a name="v2.4"></a>
 
 ## Version 2.4 - 'Defrost'
 *Wednesday 11th February, 2015*
@@ -24,11 +114,11 @@ fun!
 
 * New fn `spread` for creating rings of Euclidean distributions. Great
   for quickly creating interesting rhythms.
-* GUI now automatically appends a : to the FX param autocomplete list  
+* GUI now automatically appends a `:` to the FX param autocomplete list  
 * Synths and FX now raise an exception if any of their non-modulatable
   params are modulated. This is disabled when the pref 'check synth
   args' is unchecked.
-* GUI now renders pretty UTF-8 └─ ├─ characters when printing in the log
+* GUI now renders pretty UTF-8 `└─` `├─` characters when printing in the log
   on RP.
 * Improve docstrings for sample player.
 
@@ -49,10 +139,11 @@ fun!
   http://en.wikipedia.org/wiki/DC_bias)
 
 
+<a name="v2.3"></a>
+
 ## Version 2.3 - 'Bitcrush'
 *Wednesday 28th January, 2015*
 [(view commits)](https://github.com/samaaron/sonic-pi/commits/v2.3.0)
-
 
 ### Breaking Changes
 
@@ -127,6 +218,9 @@ fun!
   scsynth from crashing when output and input sample rates are
   different.
 
+
+<a name="v2.2"></a>
+
 ## Version 2.2 - 'Slicer'
  *Thursday 18th December, 2014*
 [(view commits)](https://github.com/samaaron/sonic-pi/commits/v2.2.0)
@@ -185,6 +279,8 @@ and echoes.
 * Added license information to info window
 * Minor grammar and spelling tweaks to tutorial
 
+
+<a name="v2.1"></a>
 
 ## Version 2.1 - 'Core'
 *Friday 21st November, 2014*
@@ -283,6 +379,9 @@ Riley, Jeremy Weatherford and Joseph Wilk.
 * Improve highlighting of log messages (`cue`/`sync` messages are more clearly highlighted)
 * Log now communicates when a run has completed executing
 * Fix bug encountered when stopping threads in super fast loops (stopped comms with server)
+
+
+<a name="v2.0"></a>
 
 ## Version 2.0 - 'Phoenix'
 *Tuesday 2nd September, 2014*

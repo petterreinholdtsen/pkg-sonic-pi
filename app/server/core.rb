@@ -4,11 +4,11 @@
 # Full project source: https://github.com/samaaron/sonic-pi
 # License: https://github.com/samaaron/sonic-pi/blob/master/LICENSE.md
 #
-# Copyright 2013, 2014 by Sam Aaron (http://sam.aaron.name).
+# Copyright 2013, 2014, 2015 by Sam Aaron (http://sam.aaron.name).
 # All rights reserved.
 #
-# Permission is granted for use, copying, modification, distribution,
-# and distribution of modified versions of this work as long as this
+# Permission is granted for use, copying, modification, and
+# distribution of modified versions of this work as long as this
 # notice is included.
 #++
 
@@ -40,6 +40,48 @@ require 'did_you_mean' unless RUBY_VERSION < "2.0.0"
 
 require 'osc-ruby'
 
+module SonicPi
+  module Core
+    module ThreadLocalCounter
+      def self.get_or_create_counters
+        counters = Thread.current.thread_variable_get(:sonic_pi_core_thread_local_counters)
+        return counters if counters
+        counters = {}
+        Thread.current.thread_variable_set(:sonic_pi_core_thread_local_counters, counters)
+        counters
+      end
+
+      def self.tick(k, n=1)
+        counters = get_or_create_counters
+        if counters[k]
+          current_val = counters[k]
+          counters[k] = counters[k] + n
+          return current_val
+        else
+          counters[k] = n
+          return 0
+        end
+      end
+
+      def self.read(k)
+        counters = get_or_create_counters
+        counters[k] || 0
+      end
+
+      def self.set(k, v)
+        counters = get_or_create_counters
+        counters[k] = v
+      end
+
+      def self.rm(k)
+        counters = get_or_create_counters
+        counters.delete(k)
+        nil
+      end
+    end
+  end
+end
+
 
 module SonicPi
   module Core
@@ -67,6 +109,29 @@ module SonicPi
         Array.new(self)
       end
 
+      def tick(key, n=1)
+        idx = ThreadLocalCounter.tick(key, n)
+        self[idx]
+      end
+
+      def hook(key, *args)
+        idx = ThreadLocalCounter.read(key)
+        self[idx]
+      end
+
+      def to_s
+        inspect
+      end
+
+      def inspect
+        a = self.to_a
+        if a.empty?
+          "(ring)"
+        else
+          "(ring #{a.inspect[1...-1]})"
+        end
+      end
+
       #TODO:    def each_with_ring
     end
   end
@@ -76,6 +141,18 @@ end
 class String
   def shuffle
     self.chars.to_a.shuffle.join
+  end
+end
+
+class Numeric
+  def max(other)
+    return self if self <= other
+    other
+  end
+
+  def min(other)
+    return self if self >= other
+    other
   end
 end
 
@@ -93,6 +170,161 @@ class Float
   end
 end
 
+module OSC
+  class ServerOverTcp < Server
+
+    def initialize(port)
+      puts "port #{port}"
+      @server = TCPServer.open(port)
+      @matchers = []
+      @queue = Queue.new
+    end
+
+    def safe_detector
+      @server.listen(5)
+      loop do
+        @so ||= @server.accept
+        begin
+          read_all = false
+          while(!read_all) do
+            readfds, _, _ = select([@so], nil, nil, 0.1)
+            if readfds
+              packet_size = @so.recv(4)
+              if(packet_size.length < 4)
+                if(packet_size.length == 0)
+                  puts "Connection dropped"
+                else
+                  puts "Failed to read full 4 bytes. Length: #{packet_size.length} Content: #{packet_size.unpack("b*")}"
+                end
+                @so.close
+                @so = nil
+                break
+              else
+                packet_size.force_encoding("BINARY")
+                bytes_expected = packet_size.unpack('N')[0]
+                bytes_read = 0
+                osc_data = ""
+                while(bytes_read < bytes_expected) do
+                  result = @so.recv(bytes_expected)
+                  #puts "bytes expected: #{bytes_expected} bytes read: #{result.length}"
+                  if result.length <= 0
+                    puts "Connection closed by client"
+                    @so.close
+                    @so = nil
+                    break
+                  else
+                    #puts "message: #{result}"
+                    bytes_read += result.length
+                    osc_data += result
+                    if bytes_read == bytes_expected
+                      read_all = true
+                    end
+                  end
+                end
+              end
+            end
+          end
+
+          if read_all
+            OSCPacket.messages_from_network( osc_data ).each do |message|
+              @queue.push(message)
+            end
+          end
+        rescue Exception => e
+          puts e
+          Kernel.puts e.message
+        end
+      end
+    end
+
+    def stop
+      @so.close if @so
+      @server.close
+    end
+
+    def safe_run
+      Thread.fork do
+        begin
+          dispatcher
+        rescue Exception => e
+          Kernel.puts e.message
+          Kernel.puts e.backtrace.inspect
+        end
+      end
+      safe_detector
+    end
+
+    def run
+      start_dispatcher
+
+      start_detector
+    end
+
+    def add_method( address_pattern, &proc )
+      matcher = AddressPattern.new( address_pattern )
+
+      @matchers << [matcher, proc]
+    end
+
+private
+
+    def dispatch_message( message )
+      diff = ( message.time || 0 ) - Time.now.to_ntp
+
+      if diff <= 0
+        sendmesg( message)
+      else # spawn a thread to wait until it's time
+        Thread.fork do
+          sleep( diff )
+          sendmesg( mesg )
+          Thread.exit
+        end
+      end
+    end
+
+    def sendmesg(mesg)
+      @matchers.each do |matcher, proc|
+        if matcher.match?( mesg.address )
+          proc.call( mesg )
+        end
+      end
+    end
+
+
+  end
+
+
+  class ClientOverTcp
+    def initialize(host, port)
+      @host, @port = host, port
+    end
+
+    def send_raw(mesg)
+      so.send(mesg, 0)
+    end
+
+    def send(mesg)
+      so.send(mesg.encode, 0)
+    end
+
+    def stop
+      so.close
+    end
+
+    def so
+      while(!@so) do
+        begin
+          @so = TCPSocket.new(@host, @port)
+        rescue Errno::ECONNREFUSED => e
+          puts "Waiting for OSC server..."
+          sleep(1)
+        end
+      end
+      @so
+    end
+
+  end
+end
 
 #Monkeypatch osc-ruby to add sending skills to Servers
 #https://github.com/samaaron/osc-ruby/commit/bfc31a709cbe2e196011e5e1420827bd0fc0e1a8
@@ -338,10 +570,31 @@ class Array
   end
 end
 
+class String
+  def ring
+    self.chars.ring
+  end
+end
+
+class Symbol
+  def ring
+    self.to_s.ring
+  end
+end
+
 
 # Meta-glasses from our hero Why to help us
 # see more clearly..
 class Object
+
+  def ring
+    self.to_a.ring
+  end
+
+  def tick(k)
+    self.ring.tick(k)
+  end
+
   # The hidden singleton lurks behind everyone
   def metaclass; class << self; self; end; end
 

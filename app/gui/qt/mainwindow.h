@@ -3,14 +3,13 @@
 // Full project source: https://github.com/samaaron/sonic-pi
 // License: https://github.com/samaaron/sonic-pi/blob/master/LICENSE.md
 //
-// Copyright 2013, 2014 by Sam Aaron (http://sam.aaron.name).
+// Copyright 2013, 2014, 2015 by Sam Aaron (http://sam.aaron.name).
 // All rights reserved.
 //
-// Permission is granted for use, copying, modification, distribution,
-// and distribution of modified versions of this work as long as this
+// Permission is granted for use, copying, modification, and
+// distribution of modified versions of this work as long as this
 // notice is included.
 //++
-
 
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
@@ -28,11 +27,13 @@
 #include <QShortcut>
 #include <QSettings>
 #include <QHash>
+#include <QTcpSocket>
 #include "oscpkt.hh"
 #include "udp.hh"
 #include <iostream>
 #include <sstream>
 #include <fstream>
+#include <QSignalMapper>
 
 class QAction;
 class QMenu;
@@ -45,7 +46,7 @@ class QString;
 class QSlider;
 class SonicPiAPIs;
 class SonicPiScintilla;
-class SonicPiUDPServer;
+class SonicPiServer;
 
 struct help_page {
   QString title;
@@ -60,7 +61,7 @@ struct help_entry {
 
 class MainWindow : public QMainWindow
 {
-    Q_OBJECT
+  Q_OBJECT
 
 public:
 #if defined(Q_OS_MAC)
@@ -69,14 +70,16 @@ public:
     MainWindow(QApplication &ref, QSplashScreen* splash);
 #endif
     void invokeStartupError(QString msg);
-    SonicPiUDPServer *sonicPiServer;
+    SonicPiServer *sonicPiServer;
+    enum {UDP=0, TCP=1};
 
 protected:
     void closeEvent(QCloseEvent *event);
     void wheelEvent(QWheelEvent *event);
 
 private slots:
-
+    void changeTab(int id);
+  void printAsciiArtLogo();
     void unhighlightCode();
     void runCode();
     void update_mixer_invert_stereo();
@@ -86,6 +89,8 @@ private slots:
     void disableCheckUpdates();
     void stopCode();
     void beautifyCode();
+    void completeListOrIndentLine(QObject *ws);
+    void indentCurrentLineOrSelection(SonicPiScintilla *ws);
     void reloadServerCode();
     void stopRunningSynths();
     void mixerInvertStereo();
@@ -109,6 +114,7 @@ private slots:
     void setRPSystemAudioAuto();
     void setRPSystemAudioHeadphones();
     void setRPSystemAudioHDMI();
+    void changeShowLineNumbers();
     void showPrefsPane();
     void updateDocPane(QListWidgetItem *cur);
     void updateDocPane2(QListWidgetItem *cur, QListWidgetItem *prev);
@@ -117,7 +123,8 @@ private slots:
     void serverError(QProcess::ProcessError error);
     void serverFinished(int exitCode, QProcess::ExitStatus exitStatus);
     void startupError(QString msg);
-    void replaceBuffer(QString id, QString content);
+    void replaceBuffer(QString id, QString content, int line, int index, int first_line);
+    void replaceLines(QString id, QString content, int first_line, int finish_line, int point_line, int point_index);
     void tabNext();
     void tabPrev();
     void helpContext();
@@ -129,6 +136,7 @@ private slots:
     void helpClosed(bool visible);
 
 private:
+    QSignalMapper *signalMapper;
     void startServer();
     void waitForServiceSync();
     void clearOutputPanels();
@@ -152,8 +160,11 @@ private:
     void addHelpPage(QListWidget *nameList, struct help_page *helpPages,
                      int len);
     QListWidget *createHelpTab(QString name);
-    QKeySequence cmdAltKey(char key);
+    QKeySequence metaKey(char key);
+    QKeySequence shiftMetaKey(char key);
+    QKeySequence ctrlMetaKey(char key);
     QKeySequence ctrlKey(char key);
+    char int2char(int i);
     void setupAction(QAction *action, char key, QString tooltip,
 		     const char *slot);
     QString readFile(QString name);
@@ -161,7 +172,9 @@ private:
 
     void addUniversalCopyShortcuts(QTextEdit *te);
 
+    QTcpSocket *clientSock;
     QFuture<void> osc_thread, server_thread;
+    int protocol;
 
     bool startup_error_reported;
     bool is_recording;
@@ -175,7 +188,7 @@ private:
     QSplashScreen* splash;
 #endif
 
-    static const int workspace_max = 8;
+    static const int workspace_max = 10;
     SonicPiScintilla *workspaces[workspace_max];
     QWidget *prefsCentral;
     QTabWidget *docsCentral;
@@ -183,8 +196,10 @@ private:
     QTextEdit *errorPane;
     QDockWidget *outputWidget;
     QDockWidget *prefsWidget;
+    QDockWidget *hudWidget;
     QDockWidget *docWidget;
     QTextBrowser *docPane;
+    QTextBrowser *hudPane;
     bool hidingDocPane;
 
     QTabWidget *tabs;
@@ -206,6 +221,7 @@ private:
     QCheckBox *print_output;
     QCheckBox *check_args;
     QCheckBox *clear_output_on_run;
+    QCheckBox *show_line_numbers;
     QCheckBox *check_updates;
 
     QRadioButton *rp_force_audio_hdmi;

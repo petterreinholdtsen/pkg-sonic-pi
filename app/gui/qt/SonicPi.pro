@@ -17,16 +17,33 @@
 #
 #-------------------------------------------------
 
+# -- Change to match the location of QScintilla on your system
+#
+# LIBS += -L/Users/sam/Downloads/tmp/QScintilla-gpl-2.8.5-snapshot-62d128cc92de/Qt4Qt5 -lqscintilla2
+# INCLUDEPATH += /Users/sam/Downloads/tmp/QScintilla-gpl-2.8.5-snapshot-62d128cc92de/Qt4Qt5
+# DEPENDPATH += /Users/sam/Downloads/tmp/QScintilla-gpl-2.8.5-snapshot-62d128cc92de/Qt4Qt5
+# --
+
 QT       += core gui concurrent network
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
 
+
 TARGET = 'sonic-pi'
 
 macx {
-TARGET = 'Sonic Pi'
-QT += macextras
+  TARGET = 'Sonic Pi'
+  QT += macextras
+  DEFINES += DONT_USE_OSX_KEYS
+}
+
+!win32 {
+  QMAKE_CXXFLAGS += -Wall -Werror -Wextra
+}
+win32 {
+  QMAKE_CXXFLAGS += /WX
+  DEFINES += _CRT_SECURE_NO_WARNINGS
 }
 
 CODECFORSRC = UTF-8
@@ -40,7 +57,14 @@ SOURCES += main.cpp \
            sonicpiapis.cpp \
            sonicpiscintilla.cpp \
            oschandler.cpp \
-           sonicpiudpserver.cpp
+           sonicpiserver.cpp \
+           sonicpiudpserver.cpp \
+           sonicpitcpserver.cpp
+win32 {
+# have to link these explicitly for some reason
+  SOURCES += platform/win/moc_qsciscintilla.cpp \
+             platform/win/moc_qsciscintillabase.cpp
+}
 
 HEADERS  += mainwindow.h \
             oscpkt.hh \
@@ -49,8 +73,10 @@ HEADERS  += mainwindow.h \
             sonicpiapis.h \
             sonicpiscintilla.h \
             oschandler.h \
+            sonicpiserver.h \
             sonicpiudpserver.h \
-            ruby_help.h
+            ruby_help.h \
+            sonicpitcpserver.h
 
 TRANSLATIONS = lang/sonic-pi_de.ts
 

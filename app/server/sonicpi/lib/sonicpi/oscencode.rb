@@ -3,11 +3,11 @@
 # Full project source: https://github.com/samaaron/sonic-pi
 # License: https://github.com/samaaron/sonic-pi/blob/master/LICENSE.md
 #
-# Copyright 2013, 2014 by Sam Aaron (http://sam.aaron.name).
+# Copyright 2013, 2014, 2015 by Sam Aaron (http://sam.aaron.name).
 # All rights reserved.
 #
-# Permission is granted for use, copying, modification, distribution,
-# and distribution of modified versions of this work as long as this
+# Permission is granted for use, copying, modification, and
+# distribution of modified versions of this work as long as this
 # notice is included.
 #++
 
@@ -103,7 +103,7 @@ module SonicPi
     def encode_single_bundle(ts, address, args=[])
       message = encode_single_message(address, args)
       message_encoded = [message.size].pack('N') << message
-      "" << @bundle_header << time_encoded(ts) << message_encoded
+        "" << @bundle_header << time_encoded(ts) << message_encoded
     end
 
     private
@@ -127,7 +127,7 @@ module SonicPi
     def encode_string(s)
       s = s.sub(/\000.*\z/, '')
       s << "\000"
-      (s << ("\000" * ((4 - (s.size % 4)) % 4)))
+      (s << ("\000" * ((4 - (s.bytesize % 4)) % 4)))
     end
 
     def time_encoded(time)
@@ -135,6 +135,18 @@ module SonicPi
       # 2 ** 32 == 4294967296
       t2 = (fr * 4294967296).to_i
       [t1, t2].pack('N2')
+    end
+  end
+
+  class StreamOscEncode < OscEncode
+    def encode_single_message(address, args=[])
+      message = super
+      ([message.length].pack('N') << message).force_encoding("BINARY")
+    end
+
+    def encode_single_bundle(ts, address, args=[])
+      message = super
+      message.count.pack('N') << message
     end
   end
 end

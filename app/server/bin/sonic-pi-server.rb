@@ -4,11 +4,11 @@
 # Full project source: https://github.com/samaaron/sonic-pi
 # License: https://github.com/samaaron/sonic-pi/blob/master/LICENSE.md
 #
-# Copyright 2013, 2014 by Sam Aaron (http://sam.aaron.name).
+# Copyright 2013, 2014, 2015 by Sam Aaron (http://sam.aaron.name).
 # All rights reserved.
 #
-# Permission is granted for use, copying, modification, distribution,
-# and distribution of modified versions of this work as long as this
+# Permission is granted for use, copying, modification, and
+# distribution of modified versions of this work as long as this
 # notice is included.
 #++
 
@@ -21,6 +21,7 @@ require_relative "../sonicpi/lib/sonicpi/spiderapi"
 require_relative "../sonicpi/lib/sonicpi/server"
 require_relative "../sonicpi/lib/sonicpi/util"
 require_relative "../sonicpi/lib/sonicpi/oscencode"
+require_relative "../sonicpi/lib/sonicpi/mods/minecraftpi"
 
 os = case RUBY_PLATFORM
      when /.*arm.*-linux.*/
@@ -48,26 +49,51 @@ require 'multi_json'
 
 include SonicPi::Util
 
-server_port = ARGV[0] ? ARGV[0].to_i : 4557
-client_port = ARGV[1] ? ARGV[1].to_i : 4558
-puts "Using protocol: UDP"
+server_port = ARGV[1] ? ARGV[0].to_i : 4557
+client_port = ARGV[2] ? ARGV[1].to_i : 4558
+
+protocol = case ARGV[0]
+           when "-t"
+            :tcp
+           else
+            :udp
+           end
+
+puts "Using protocol: #{protocol}"
 
 ws_out = Queue.new
-gui = OSC::Client.new("localhost", client_port)
-encoder = SonicPi::OscEncode.new(true)
+if protocol == :tcp
+  gui = OSC::ClientOverTcp.new("127.0.0.1", client_port)
+  encoder = SonicPi::StreamOscEncode.new(true)
+else
+  gui = OSC::Client.new("127.0.0.1", client_port)
+  encoder = SonicPi::OscEncode.new(true)
+end
 
 begin
-  osc_server = OSC::Server.new(server_port)
+  if protocol == :tcp
+    osc_server = OSC::ServerOverTcp.new(server_port)
+  else
+    osc_server = OSC::Server.new(server_port)
+  end
 rescue Exception => e
   m = encoder.encode_single_message("/exited", ["Failed to open server port " + server_port.to_s + ", is scsynth already running?"])
-  gui.send_raw(m)
+  begin
+    gui.send_raw(m)
+  rescue Errno::EPIPE => e
+    puts "GUI not listening, exit anyway."
+  end
   exit
 end
 
 
 at_exit do
   m = encoder.encode_single_message("/exited")
-  gui.send_raw(m)
+  begin
+    gui.send_raw(m)
+  rescue Errno::EPIPE => e
+    puts "GUI not listening."
+  end
 end
 
 user_methods = Module.new
@@ -78,11 +104,12 @@ klass.send(:include, user_methods)
 klass.send(:include, SonicPi::SpiderAPI)
 #klass.send(:include, SonicPi::Mods::SPMIDI)
 klass.send(:include, SonicPi::Mods::Sound)
+klass.send(:include, SonicPi::Mods::Minecraft)
 begin
   sp =  klass.new "localhost", 4556, ws_out, 5, user_methods
 rescue Exception => e
   puts "Failed to start server: " + e.message
-  m = encoder.encode_single_message("/exited", [e.message])
+  m = encoder.encode_single_message("/exited_with_boot_error", [e.message])
   gui.send_raw(m)
   exit
 end
@@ -162,15 +189,36 @@ osc_server.add_method("/load-buffer") do |payload|
   end
 end
 
+osc_server.add_method("/indent-selection") do |payload|
+#  puts "indenting current line..."
+  begin
+    args = payload.to_a
+    id = args[0]
+    buf = args[1]
+    start_line = args[2]
+    finish_line = args[3]
+    point_line = args[4]
+    point_index = args[5]
+    sp.__indent_lines(id, buf, start_line, finish_line, point_line, point_index)
+  rescue Exception => e
+    puts "Received Exception when attempting to indent current line!"
+    puts e.message
+    puts e.backtrace.inspect
+  end
+end
+
 osc_server.add_method("/beautify-buffer") do |payload|
 #  puts "beautifying buffer..."
   begin
     args = payload.to_a
     id = args[0]
     buf = args[1]
-    sp.__beautify_buffer(id, buf)
+    line = args[2]
+    index = args[3]
+    first_line = args[4]
+    sp.__beautify_buffer(id, buf, line, index, first_line)
   rescue Exception => e
-    puts "Received Exception when attempting to load buffer!"
+    puts "Received Exception when attempting to beautify buffer!"
     puts e.message
     puts e.backtrace.inspect
   end
@@ -345,7 +393,11 @@ osc_server.add_method("/disable-update-checking") do |payload|
   end
 end
 
-Thread.new{osc_server.run}
+if protocol == :tcp
+  Thread.new{osc_server.safe_run}
+else
+  Thread.new{osc_server.run}
+end
 
 # Send stuff out from Sonic Pi back out to osc_server
 out_t = Thread.new do
@@ -357,7 +409,11 @@ out_t = Thread.new do
 
       if message[:type] == :exit
         m = encoder.encode_single_message("/exited")
-        gui.send_raw(m)
+        begin
+          gui.send_raw(m)
+        rescue Errno::EPIPE => e
+          puts "GUI not listening, exit anyway."
+        end
         continue = false
       else
         case message[:type]
@@ -378,9 +434,22 @@ out_t = Thread.new do
           gui.send_raw(m)
         when "replace-buffer"
           buf_id = message[:buffer_id]
-          content = message[:val]
+          content = message[:val] || "Internal error within a fn calling replace-buffer without a :val payload"
+          line = message[:line] || 0
+          index = message[:index] || 0
+          first_line = message[:first_line] || 0
 #          puts "replacing buffer #{buf_id}, #{content}"
-          m = encoder.encode_single_message("/replace-buffer", [buf_id, content])
+          m = encoder.encode_single_message("/replace-buffer", [buf_id, content, line, index, first_line])
+          gui.send_raw(m)
+        when "replace-lines"
+          buf_id = message[:buffer_id]
+          content = message[:val] || "Internal error within a fn calling replace-line without a :val payload"
+          point_line = message[:point_line] || 0
+          point_index = message[:point_index] || 0
+          start_line = message[:start_line] || point_line
+          finish_line = message[:finish_line] || start_line
+#          puts "replacing line #{buf_id}, #{content}"
+          m = encoder.encode_single_message("/replace-lines", [buf_id, content, start_line, finish_line, point_line, point_index])
           gui.send_raw(m)
         else
 #          puts "ignoring #{message}"
