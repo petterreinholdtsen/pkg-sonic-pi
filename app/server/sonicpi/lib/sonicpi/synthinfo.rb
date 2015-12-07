@@ -1391,6 +1391,279 @@ module SonicPi
     end
   end
 
+  class Growl < SonicPiSynth
+    def name
+      "Growl"
+    end
+
+    def introduced
+      Version.new(2,4,0)
+    end
+
+    def synth_name
+      "growl"
+    end
+
+    def doc
+     "A deep rumbling growl with a bright sine shining through at higher notes."
+    end
+
+    def arg_defaults
+      {:note => 52,
+       :note_slide => 0,
+       :note_slide_shape => 5,
+       :note_slide_curve => 0,
+
+       :amp => 1,
+       :amp_slide => 0,
+       :amp_slide_shape => 5,
+       :amp_slide_curve => 0,
+
+       :pan => 0,
+       :pan_slide => 0,
+       :pan_slide_shape => 5,
+       :pan_slide_curve => 0,
+
+       :attack => 0.1,
+       :decay => 0,
+       :sustain => 0,
+       :release => 1,
+       :attack_level => 1,
+       :sustain_level => 1,
+       :env_curve => 2
+      }
+    end
+  end
+
+  class DarkAmbience < SonicPiSynth
+    def name
+      "Dark Ambience"
+    end
+
+    def introduced
+      Version.new(2,4,0)
+    end
+
+    def synth_name
+      "dark_ambience"
+    end
+
+    def doc
+     "A slow rolling bass with a sparkle of light trying to escape the darkness. Great for an ambient sound."
+    end
+
+    def arg_defaults
+      {:freq_addition => 52,
+       :ring_multipler => 0.2,
+
+       :room_size => 70,
+       :reverb_time => 100,
+
+       :note => 52,
+       :note_slide => 0,
+       :note_slide_shape => 5,
+       :note_slide_curve => 0,
+
+       :amp => 1,
+       :amp_slide => 0,
+       :amp_slide_shape => 5,
+       :amp_slide_curve => 0,
+
+       :pan => 0,
+       :pan_slide => 0,
+       :pan_slide_shape => 5,
+       :pan_slide_curve => 0,
+
+       :attack => 0.01,
+       :decay => 0,
+       :sustain => 0,
+       :release => 10,
+       :attack_level => 1,
+       :sustain_level => 1,
+       :env_curve => 2
+      }
+    end
+
+    def specific_arg_info
+      {
+        :freq_addition =>
+        {
+          :doc => "A frequency which is used to generate offsets from the start note which are all then mixed back into a single sound. It has a slight detuning effect."
+        },
+        :ring_multipler => {
+          :doc => "Multiplier used for each ring iteration. Gives a stronger feedback effect.",
+          :validations => [v_between_inclusive(:ring_multipler, 0.1, 50)],
+        },
+        :room_size =>
+        {
+          :doc => "Room size in squared meters used to calculate the reverb.",
+          :validations => [v_positive(:room_size)],
+        },
+        :reverb_time =>
+        {
+          :doc => "How long in seconds the reverb should go on for.",
+          :validations => [v_positive(:reverb_time)],
+        }
+      }
+    end
+  end
+
+  class DarkSeaHorn < SonicPiSynth
+    def name
+      "Dark Sea Horn"
+    end
+
+    def introduced
+      Version.new(2,4,0)
+    end
+
+    def synth_name
+      "dark_sea_horn"
+    end
+
+    def doc
+     "A deep, rolling sea horn echoing across the empty water."
+    end
+
+    def arg_defaults
+      {:note => 52,
+       :note_slide => 0,
+       :note_slide_shape => 5,
+       :note_slide_curve => 0,
+
+       :amp => 1,
+       :amp_slide => 0,
+       :amp_slide_shape => 5,
+       :amp_slide_curve => 0,
+
+       :pan => 0,
+       :pan_slide => 0,
+       :pan_slide_shape => 5,
+       :pan_slide_curve => 0,
+
+       :attack => 1,
+       :decay => 0,
+       :sustain => 0,
+       :release => 4.0,
+       :attack_level => 1,
+       :sustain_level => 1,
+       :env_curve => 2
+      }
+    end
+  end
+
+  class Singer < SonicPiSynth
+    def name
+      "Singer"
+    end
+
+    def introduced
+      Version.new(2,4,0)
+    end
+
+    def synth_name
+      "singer"
+    end
+
+    def doc
+     "Simulating the sound of a vibrato human singer.
+
+     #Bass
+     singer note: :G2
+
+     #Tenor
+     singer note: :C#4
+
+     #Alto
+     singer note: :F#4
+
+     #Soprano
+     singer note: :D5"
+    end
+
+    def arg_defaults
+      {:note => 52,
+       :note_slide => 0,
+       :note_slide_shape => 5,
+       :note_slide_curve => 0,
+
+       :amp => 1,
+       :amp_slide => 0,
+       :amp_slide_shape => 5,
+       :amp_slide_curve => 0,
+
+       :pan => 0,
+       :pan_slide => 0,
+       :pan_slide_shape => 5,
+       :pan_slide_curve => 0,
+
+       :attack => 1,
+       :decay => 0,
+       :sustain => 0,
+       :release => 4.0,
+       :attack_level => 1,
+       :sustain_level => 1,
+       :env_curve => 2
+      }
+    end
+
+    def specific_arg_info
+      {
+        :vibrato_speed =>
+        {
+          :doc => "How fast the singer switches between two notes."
+        },
+        :vibrato_depth =>
+        {
+          :doc => "How far the singer travels between notes."
+        }
+      }
+    end
+  end
+
+  class Wood < SonicPiSynth
+    def name
+      "Wood"
+    end
+
+    def introduced
+      Version.new(2,4,0)
+    end
+
+    def synth_name
+      "wood"
+    end
+
+    def doc
+     "Simulates the sound of wood being hit with stick. A little like a xylophone."
+    end
+
+    def arg_defaults
+      {:note => 52,
+       :note_slide => 0,
+       :note_slide_shape => 5,
+       :note_slide_curve => 0,
+
+       :amp => 1,
+       :amp_slide => 0,
+       :amp_slide_shape => 5,
+       :amp_slide_curve => 0,
+
+       :pan => 0,
+       :pan_slide => 0,
+       :pan_slide_shape => 5,
+       :pan_slide_curve => 0,
+
+       :attack => 0.01,
+       :decay => 0,
+       :sustain => 0,
+       :release => 0.1,
+       :attack_level => 1,
+       :sustain_level => 1,
+       :env_curve => 2
+      }
+    end
+  end
 
   class Zawa < SonicPiSynth
     def name
@@ -1534,7 +1807,6 @@ module SonicPi
       }
     end
   end
-
 
   class Prophet < SonicPiSynth
     def name
@@ -2016,6 +2288,11 @@ end
     end
 
 
+    def kill_delay(args_h)
+      [(args_h[:room] * 10) + 1, 11].min
+    end
+
+
     def specific_arg_info
       {
         :room =>
@@ -2059,7 +2336,7 @@ end
     end
 
     def introduced
-      Version.new(2,0,0)
+      Version.new(2,3,0)
     end
 
     def synth_name
@@ -2067,7 +2344,7 @@ end
     end
 
     def doc
-      "Creates lo-fi output by decimating and deconstructing the incoming audio by lowering both the sample rate and bit depth. The default sample rate for CD audio is 44100, so use values less than that for lo-fi sound. Similarly, the default bit depth for CD audio is 16, so use values less than that for that crunchy chip-tune sound full of artefacts and bitty distortion."
+      "Creates lo-fi output by decimating and deconstructing the incoming audio by lowering both the sample rate and bit depth. The default sample rate for CD audio is 44100, so use values less than that for that crunchy chip-tune sound full of artefacts and bitty distortion. Similarly, the default bit depth for CD audio is 16, so use values less than that for lo-fi sound."
     end
 
     def arg_defaults
@@ -2197,11 +2474,7 @@ end
         :decay_slide => 0,
         :decay_slide_shape => 5,
         :decay_slide_curve => 0,
-        :max_phase => 2,
-        :amp => 1,
-        :amp_slide => 0,
-        :amp_slide_shape => 5,
-        :amp_slide_curve => 0,
+        :max_phase => 2
       }
     end
 
@@ -2250,7 +2523,7 @@ end
     end
 
     def kill_delay(args_h)
-      args_h[:decay] || arg_defaults[:decay]
+      args_h[:decay]
     end
 
   end
@@ -2905,11 +3178,7 @@ The way the transpositions are done adds some distortion, particulary to the low
         :decay_slide => 0,
         :decay_slide_shape => 5,
         :decay_slide_curve => 0,
-        :max_phase => 1,
-        :amp => 1,
-        :amp_slide => 0,
-        :amp_slide_shape => 5,
-        :amp_slide_curve => 0,
+        :max_phase => 1
       }
     end
 
@@ -2957,7 +3226,7 @@ The way the transpositions are done adds some distortion, particulary to the low
     end
 
     def kill_delay(args_h)
-      args_h[:decay] || arg_defaults[:decay]
+      args_h[:decay]
     end
 
     def doc
@@ -2971,7 +3240,7 @@ The way the transpositions are done adds some distortion, particulary to the low
     end
 
     def introduced
-      Version.new(2,2,0)
+      Version.new(2,3,0)
     end
 
     def synth_name
@@ -2980,6 +3249,10 @@ The way the transpositions are done adds some distortion, particulary to the low
 
     def arg_defaults
       {
+        :freq => 30,
+        :freq_slide => 0,
+        :freq_slide_shape => 5,
+        :freq_slide_curve => 0,
         :amp => 1,
         :amp_slide => 0,
         :amp_slide_shape => 5,
@@ -2992,10 +3265,6 @@ The way the transpositions are done adds some distortion, particulary to the low
         :pre_amp_slide => 0,
         :pre_amp_slide_shape => 5,
         :pre_amp_slide_curve => 0,
-        :freq => 100,
-        :freq_slide => 0,
-        :freq_slide_shape => 5,
-        :freq_slide_curve => 0,
         :mod_amp => 1,
         :mod_amp_slide => 0,
         :mod_amp_slide_shape => 5,
@@ -3004,11 +3273,26 @@ The way the transpositions are done adds some distortion, particulary to the low
     end
 
     def specific_arg_info
-      { }
+      {
+        :freq =>
+        {
+          :doc => "Frequency of the carrier signal (as a midi note).",
+          :validations => [v_positive_not_zero(:freq)],
+          :modulatable => true
+        },
+
+        :freq_slide =>
+        {
+          :doc => generic_slide_doc(:freq),
+          :validations => [v_positive(:freq_slide)],
+          :modulatable => true,
+          :bpm_scale => true
+        }
+      }
     end
 
     def doc
-      "Attack of the Daleks! Ring mod is a classic effect often used on soundtracks to evoke robots or aliens. We take a 'carrier' signal (a sine wave controlled by the freq argument) and modulate it's amplitude using the signal given inside the fx block. This produces a wide variety of sounds - the best way to learn is to experiment!"
+      "Attack of the Daleks! Ring mod is a classic effect often used on soundtracks to evoke robots or aliens as it sounds hollow or metallic. We take a 'carrier' signal (a sine wave controlled by the freq argument) and modulate it's amplitude using the signal given inside the fx block. This produces a wide variety of sounds - the best way to learn is to experiment!"
     end
   end
 
@@ -3018,7 +3302,7 @@ The way the transpositions are done adds some distortion, particulary to the low
     end
 
     def introduced
-      Version.new(2,2,0)
+      Version.new(2,3,0)
     end
 
     def synth_name
@@ -3039,10 +3323,10 @@ The way the transpositions are done adds some distortion, particulary to the low
         :pre_amp_slide => 0,
         :pre_amp_slide_shape => 5,
         :pre_amp_slide_curve => 0,
-        :freq => 100,
-        :freq_slide => 0,
-        :freq_slide_shape => 5,
-        :freq_slide_curve => 0,
+        :centre => 100,
+        :centre_slide => 0,
+        :centre_slide_shape => 5,
+        :centre_slide_curve => 0,
         :res => 0.5,
         :res_slide => 0,
         :res_slide_shape => 5,
@@ -3051,59 +3335,35 @@ The way the transpositions are done adds some distortion, particulary to the low
     end
 
     def specific_arg_info
-      { }
+      {
+        :centre =>
+        {
+          :doc => "Centre frequency for the filter in MIDI. ",
+          :validations => [v_greater_than_oet(:level, 0)],
+          :modulatable => true
+        },
+
+      }
     end
 
     def doc
-      "Combines low pass and high pass filters to only allow a 'band' of frequencies through. If the band is very narrow (a low res value like 0.0001) then the BPF will reduce the original sound, almost down to a single frequency (controlled by the freq argument).
+      "Combines low pass and high pass filters to only allow a 'band' of frequencies through. If the band is very narrow (a low res value like 0.0001) then the BPF will reduce the original sound, almost down to a single frequency (controlled by the centre argument).
 
 With higher values for res we can simulate other filters e.g. telephone lines, by cutting off low and high frequencies."
     end
   end
 
-  class FXRBPF < FXInfo
+  class FXRBPF < FXBPF
     def name
       "Resonant Band Pass Filter"
     end
 
     def introduced
-      Version.new(2,2,0)
+      Version.new(2,3,0)
     end
 
     def synth_name
       "fx_rbpf"
-    end
-
-    def arg_defaults
-      {
-        :amp => 1,
-        :amp_slide => 0,
-        :amp_slide_shape => 5,
-        :amp_slide_curve => 0,
-        :mix => 1,
-        :mix_slide => 0,
-        :mix_slide_shape => 5,
-        :mix_slide_curve => 0,
-        :pre_amp => 1,
-        :pre_amp_slide => 0,
-        :pre_amp_slide_shape => 5,
-        :pre_amp_slide_curve => 0,
-        :freq => 100,
-        :freq_slide => 0,
-        :freq_slide_shape => 5,
-        :freq_slide_curve => 0,
-        :res => 0.5,
-        :res_slide => 0,
-        :res_slide_shape => 5,
-        :res_slide_curve => 0,
-      }
-    end
-
-    def specific_arg_info
-      {
-
-
-      }
     end
 
     def doc
@@ -3111,49 +3371,37 @@ With higher values for res we can simulate other filters e.g. telephone lines, b
     end
   end
 
-  class FXNRBPF < FXInfo
+    class FXNBPF < FXBPF
+    def name
+      "Normalised Band Pass Filter"
+    end
+
+    def introduced
+      Version.new(2,3,0)
+    end
+
+    def synth_name
+      "fx_nbpf"
+    end
+
+    def doc
+      "Like the Band Pass Filter but normalized. The normalizer is useful here as some volume is lost when filtering the original signal."
+    end
+  end
+
+
+
+  class FXNRBPF < FXRBPF
     def name
       "Normalised Resonant Band Pass Filter"
     end
 
     def introduced
-      Version.new(2,1,0)
+      Version.new(2,3,0)
     end
 
     def synth_name
       "fx_nrbpf"
-    end
-
-    def arg_defaults
-      {
-        :amp => 1,
-        :amp_slide => 0,
-        :amp_slide_shape => 5,
-        :amp_slide_curve => 0,
-        :mix => 1,
-        :mix_slide => 0,
-        :mix_slide_shape => 5,
-        :mix_slide_curve => 0,
-        :pre_amp => 1,
-        :pre_amp_slide => 0,
-        :pre_amp_slide_shape => 5,
-        :pre_amp_slide_curve => 0,
-        :freq => 100,
-        :freq_slide => 0,
-        :freq_slide_shape => 5,
-        :freq_slide_curve => 0,
-        :res => 0.5,
-        :res_slide => 0,
-        :res_slide_shape => 5,
-        :res_slide_curve => 0,
-      }
-    end
-
-    def specific_arg_info
-      {
-
-
-      }
     end
 
     def doc
@@ -3452,11 +3700,7 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
         :level => 1,
         :level_slide => 0,
         :level_slide_shape => 5,
-        :level_slide_curve => 0,
-        :amp => 1,
-        :amp_slide => 0,
-        :amp_slide_shape => 5,
-        :amp_slide_curve => 0,
+        :level_slide_curve => 0
       }
     end
 
@@ -3579,6 +3823,143 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
     end
   end
 
+    class FXFlanger < FXInfo
+    def name
+      "Flanger"
+    end
+
+    def introduced
+      Version.new(2,3,0)
+    end
+
+    def synth_name
+      "fx_flanger"
+    end
+
+    def doc
+      "Mix the incoming signal with a copy of itself which has a rate modulating faster and slower than the original.  Creates a swirling/whooshing effect."
+    end
+
+    def arg_defaults
+      {
+        :amp => 1,
+        :amp_slide => 0,
+        :amp_slide_shape => 5,
+        :amp_slide_curve => 0,
+        :mix => 1,
+        :mix_slide => 0,
+        :mix_slide_shape => 5,
+        :mix_slide_curve => 0,
+        :pre_amp => 1,
+        :pre_amp_slide => 0,
+        :pre_amp_slide_shape => 5,
+        :pre_amp_slide_curve => 0,
+        :phase => 4,
+        :phase_slide => 0,
+        :phase_slide_shape => 5,
+        :phase_slide_curve => 0,
+        :phase_offset => 0,
+        :wave => 4,
+        :invert_wave => 0,
+        :stereo_invert_wave => 0,
+        :delay => 5,
+        :delay_slide => 0,
+        :delay_slide_shape => 5,
+        :delay_slide_curve => 0,
+        :max_delay => 20,
+        :depth => 5,
+        :depth_slide => 0,
+        :depth_slide_shape => 5,
+        :depth_slide_curve => 0,
+        :decay => 2,
+        :decay_slide => 0,
+        :decay_slide_shape => 5,
+        :decay_slide_curve => 0,
+        :feedback => 0,
+        :feedback_slide => 0,
+        :feedback_slide_shape => 5,
+        :feedback_slide_curve => 0,
+        :invert_flange => 0
+      }
+    end
+
+    def specific_arg_info
+      {
+
+
+        :phase =>
+        {
+          :doc => "Phase duration in seconds of flanger modulation.",
+          :validations => [v_positive_not_zero(:phase)],
+          :modulatable => true,
+          :bpm_scale => true
+        },
+
+        :wave =>
+        {
+          :doc => "Wave type - 0 saw, 1 pulse, 2 triangle, 3 sine, 4 cubic. Different waves will produce different flanging modulation effects.",
+          :validations => [v_one_of(:wave, [0, 1, 2, 3, 4])],
+          :modulatable => true
+        },
+
+        :invert_wave =>
+        {
+          :doc => "Invert flanger control waveform (i.e. flip it on the y axis). 0=normal wave, 1=inverted wave.",
+          :validations => [v_one_of(:invert_wave, [0, 1])],
+          :modulatable => true
+        },
+
+        :stereo_invert_wave =>
+        {
+          :doc => "Make the flanger control waveform in the left ear an inversion of the control waveform in the right ear. 0=normal wave, 1=inverted wave. This happens after the standard wave inversion with param :invert_wave.",
+          :validations => [v_one_of(:stereo_invert_wave, [0, 1])],
+          :modulatable => true
+        },
+
+        :delay =>
+        {
+          :doc => "Amount of delay time between original and flanged version of audio.",
+          :modulatable => true
+        },
+
+        :max_delay =>
+        {
+          :doc => "Max delay time. Used to set internal buffer size.",
+          :validations => [v_positive(:max_delay)],
+          :modulatable => false
+        },
+
+        :depth =>
+        {
+          :doc => "Flange depth - greater depths produce a more prominent effect.",
+          :modulatable => true
+        },
+
+        :decay =>
+        {
+          :doc => "Flange decay time in ms",
+          :validations => [v_positive(:decay)],
+          :modulatable => true
+        },
+
+        :feedback =>
+        {
+          :doc => "Amount of feedback.",
+          :validations => [v_positive(:feedback)],
+          :modulatable => true
+        },
+
+        :invert_flange =>
+        {
+          :doc => "Invert flanger signal. 0=no inversion, 1=inverted signal.",
+          :validations => [v_one_of(:invert_flange, [0, 1])],
+          :modulatable => true
+        }
+
+      }
+      end
+  end
+
   class BaseInfo
 
     @@grouped_samples =
@@ -3642,7 +4023,8 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
         :samples => [
           :guit_harmonics,
           :guit_e_fifths,
-          :guit_e_slide]},
+          :guit_e_slide,
+          :guit_em9]},
 
       :misc => {
         :desc => "Miscellaneous Sounds",
@@ -3654,7 +4036,9 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
         :desc => "Percussive Sounds",
         :prefix => "perc_",
         :samples => [
-          :perc_bell]},
+          :perc_bell,
+          :perc_snap,
+          :perc_snap2]},
 
       :ambi => {
         :desc => "Ambient Sounds",
@@ -3696,6 +4080,7 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
         :desc => "Bass Drums",
         :prefix => "bd_",
         :samples => [
+          :bd_ada,
           :bd_pure,
           :bd_808,
           :bd_zum,
@@ -3744,6 +4129,11 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
       :supersaw => Supersaw.new,
       :prophet => Prophet.new,
       :zawa => Zawa.new,
+      :dark_ambience => DarkAmbience.new,
+      :growl         => Growl.new,
+      :wood          => Wood.new,
+      :dark_sea_horn => DarkSeaHorn.new,
+      :singer        => Singer.new,
       :mono_player => MonoPlayer.new,
       :stereo_player => StereoPlayer.new,
 
@@ -3758,7 +4148,7 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
       :basic_stereo_player => BasicStereoPlayer.new,
       :basic_mixer => BasicMixer.new,
 
-#      :fx_bitcrusher => FXBitcrusher.new,
+      :fx_bitcrusher => FXBitcrusher.new,
       :fx_reverb => FXReverb.new,
       :fx_replace_reverb => FXReverb.new,
       :fx_level => FXLevel.new,
@@ -3794,15 +4184,16 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
       :fx_distortion => FXDistortion.new,
       :fx_replace_distortion => FXDistortion.new,
       :fx_pan => FXPan.new,
-      :fx_replace_pan => FXPan.new
-      # :fx_bpf => FXBPF.new,
-      # :fx_rbpf => FXRBPF.new,
-      # :fx_nrbpf => FXNRBPF.new,
-      # :fx_ring => FXRingMod.new,
-      # :fx_chorus => FXChorus.new
-#      :fx_harmoniser => FXHarmoniser.new
-
-      }
+      :fx_replace_pan => FXPan.new,
+      :fx_bpf => FXBPF.new,
+      :fx_nbpf => FXNBPF.new,
+      :fx_rbpf => FXRBPF.new,
+      :fx_nrbpf => FXNRBPF.new,
+      :fx_ring => FXRingMod.new,
+      #:fx_chorus => FXChorus.new,
+      #:fx_harmoniser => FXHarmoniser.new,
+      :fx_flanger => FXFlanger.new
+    }
 
     def self.get_info(synth_name)
       @@synth_infos[synth_name.to_sym]
@@ -3846,16 +4237,6 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
 
         doc << '<p> <span style="font-size:25px; color:white;background-color:deeppink;">'
         doc << "<font #{hv_face}>" << v.name << "</font></span></p>\n"
-        if klass == SynthInfo
-          safe_k = k
-          doc << "<h2><font color=\"#3C3C3C\"><pre>use_synth"
-          doc << " <font color=\"DeepPink\">:#{safe_k}</font></pre></h2>\n"
-
-        else
-          safe_k = k.to_s[3..-1]
-          doc << "<h2><pre><font color=\"#3C3C3C\">with_fx"
-          doc << " <font color=\"DeepPink\">:#{safe_k}</font> <font color=\"DarkOrange\">do</font><br/>  play <font color=\"DodgerBlue\">50</font><br/><font color=\"DarkOrange\">end</font></pre></font></h2>\n"
-        end
 
         cnt = 0
         doc << "<table cellpadding=\"2\">\n <tr>"
@@ -3874,7 +4255,18 @@ Choose a lower cutoff to keep more of the bass/mid and a higher cutoff to make t
         doc << "<p><font size=\"4\", #{hv_face}>"
         doc << "  " << v.doc << "</font></p>\n"
 
-        doc << "<p><font size=\"3\", #{hv_face}>\n"
+        if klass == SynthInfo
+          safe_k = k
+          doc << "<h2><font color=\"#3C3C3C\"><pre>use_synth"
+          doc << " <font color=\"DeepPink\">:#{safe_k}</font></pre></h2>\n"
+
+        else
+          safe_k = k.to_s[3..-1]
+          doc << "<h2><pre><font color=\"#3C3C3C\">with_fx"
+          doc << " <font color=\"DeepPink\">:#{safe_k}</font> <font color=\"DarkOrange\">do</font><br/>  play <font color=\"DodgerBlue\">50</font><br/><font color=\"DarkOrange\">end</font></pre></font></h2>\n"
+        end
+
+                doc << "<p><font size=\"3\", #{hv_face}>\n"
         doc << "<span style=\"color:white;background-color:darkorange;\">"
         doc << "Introduced in " << v.introduced.to_s << "\n</span></p>\n"
 

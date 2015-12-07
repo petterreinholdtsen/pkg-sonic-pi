@@ -121,7 +121,7 @@ make_tab = lambda do |name, doc_items, titleize=false, should_sort=true|
 end
 
 example_html_map = {}
-example_dirs = ["Apprentice", "Illusionist", "Magician", "Sorcerer", "Wizard", "Meta-eX"]
+example_dirs = ["Apprentice", "Illusionist", "Magician", "Sorcerer", "Wizard", "Algomancer"]
 example_dirs.each do |ex_dir|
   Dir["#{examples_path}/#{ex_dir.downcase}/*.rb"].each do |path|
     bname = File.basename(path, ".rb")
@@ -144,7 +144,7 @@ ruby_html_map = {
 }
 
 tutorial_html_map = {}
-Dir["#{tutorial_path}/*.md"].sort.each do |path|
+Dir["#{tutorial_path}/en/*.md"].sort.each do |path|
   contents = IO.read(path)
   html = MarkdownConverter.convert contents
   name = File.basename(path, ".md").gsub!(/-/, ' ')
@@ -219,7 +219,7 @@ info_sources.each do |src|
   bn = m[1]
   ext = m[2]
 
-  input = IO.read(input_path)
+  input = IO.read(input_path, :encoding => 'utf-8')
   if ext == "md"
     html = MarkdownConverter.convert(input)
   else

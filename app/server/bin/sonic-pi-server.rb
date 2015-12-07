@@ -22,6 +22,28 @@ require_relative "../sonicpi/lib/sonicpi/server"
 require_relative "../sonicpi/lib/sonicpi/util"
 require_relative "../sonicpi/lib/sonicpi/oscencode"
 
+os = case RUBY_PLATFORM
+     when /.*arm.*-linux.*/
+       :raspberry
+     when /.*linux.*/
+       :linux
+     when /.*darwin.*/
+       :osx
+     when /.*mingw.*/
+       :windows
+     else
+       RUBY_PLATFORM
+     end
+
+if os == :osx
+  # Force sample rate for both input and output to 44k
+  # If these are not identical, then scsynth will refuse
+  # to boot.
+  require 'coreaudio'
+  CoreAudio.default_output_device(nominal_rate: 44100.0)
+  CoreAudio.default_input_device(nominal_rate: 44100.0)
+end
+
 require 'multi_json'
 
 include SonicPi::Util
@@ -297,6 +319,27 @@ osc_server.add_method("/mixer-lpf-disable") do |payload|
     sp.set_mixer_lpf_disable!
   rescue Exception => e
     puts "Received Exception when attempting to disable mixer lpf"
+    puts e.message
+    puts e.backtrace.inspect
+  end
+end
+
+
+osc_server.add_method("/enable-update-checking") do |payload|
+  begin
+    sp.__enable_update_checker
+  rescue Exception => e
+    puts "Received Exception when attempting to enable update checking"
+    puts e.message
+    puts e.backtrace.inspect
+  end
+end
+
+osc_server.add_method("/disable-update-checking") do |payload|
+  begin
+    sp.__disable_update_checker
+  rescue Exception => e
+    puts "Received Exception when attempting to disable update checking"
     puts e.message
     puts e.backtrace.inspect
   end
