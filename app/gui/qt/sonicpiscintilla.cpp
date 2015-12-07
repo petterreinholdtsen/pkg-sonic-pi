@@ -19,11 +19,12 @@
 #include <Qsci/qscicommandset.h>
 #include <Qsci/qscilexer.h>
 
-SonicPiScintilla::SonicPiScintilla(SonicPiLexer *lexer)
+SonicPiScintilla::SonicPiScintilla(SonicPiLexer *lexer, SonicPiTheme *theme)
   : QsciScintilla()
 {
-  this->standardCommands()->clearKeys();
-  this->standardCommands()->clearAlternateKeys();
+  this->theme = theme;
+  standardCommands()->clearKeys();
+  standardCommands()->clearAlternateKeys();
   QString skey;
   QSettings settings("sonic-pi.net", "Key bindings");
 
@@ -89,6 +90,8 @@ SonicPiScintilla::SonicPiScintilla(SonicPiLexer *lexer)
   addKeyBinding(settings, QsciCommand::Backtab, Qt::Key_Tab | Qt::SHIFT);
 
   // copy paste
+  addKeyBinding(settings, QsciCommand::SelectionCopy, Qt::Key_C | SPi_META);
+  addOtherKeyBinding(settings, QsciCommand::SelectionCopy, Qt::Key_C | SPi_CTRL);
   addKeyBinding(settings, QsciCommand::SelectionCut, Qt::Key_X | SPi_META);
   addOtherKeyBinding(settings, QsciCommand::SelectionCut, Qt::Key_X | SPi_CTRL);
 
@@ -105,56 +108,77 @@ SonicPiScintilla::SonicPiScintilla(SonicPiLexer *lexer)
   addKeyBinding(settings, QsciCommand::DeleteWordLeft, Qt::Key_Backspace | SPi_META);
   addKeyBinding(settings, QsciCommand::DeleteWordRight, Qt::Key_D | SPi_META);
 
-  this->standardCommands()->readSettings(settings);
+  standardCommands()->readSettings(settings);
 
-  this->setMatchedBraceBackgroundColor(QColor("dimgray"));
-  this->setMatchedBraceForegroundColor(QColor("white"));
+  this->setMatchedBraceBackgroundColor(theme->color("MatchedBraceBackground"));
+  this->setMatchedBraceForegroundColor(theme->color("MatchedBraceForeground"));
 
-  this->setIndentationWidth(2);
-  this->setIndentationGuides(true);
-  this->setIndentationGuidesForegroundColor(QColor("deep pink"));
-  this->setBraceMatching( SonicPiScintilla::SloppyBraceMatch);
+  setIndentationWidth(2);
+  setIndentationGuides(true);
+  setIndentationGuidesForegroundColor(theme->color("IndentationGuidesForeground"));
+  setBraceMatching( SonicPiScintilla::SloppyBraceMatch);
 
   //TODO: add preference toggle for this:
   //this->setFolding(SonicPiScintilla::CircledTreeFoldStyle, 2);
-  this->setCaretLineVisible(true);
-  this->setCaretLineBackgroundColor(QColor("whitesmoke"));
-  this->setFoldMarginColors(QColor("whitesmoke"),QColor("whitesmoke"));
-  this->setMarginLineNumbers(0, true);
-  this->setMarginsBackgroundColor(QColor("whitesmoke"));
-  this->setMarginsForegroundColor(QColor("dark gray"));
-  this->setMarginsFont(QFont("Menlo", 15, -1, true));
-  this->setUtf8(true);
-  this->setText("#loading...");
-  this->setLexer((QsciLexer *)lexer);
+  setCaretLineVisible(true);
+  setCaretLineBackgroundColor(theme->color("CaretLineBackground"));
+  setFoldMarginColors(theme->color("FoldMarginForeground"),theme->color("FoldMarginForeground"));
+  setMarginLineNumbers(0, true);
 
-  this->setAutoCompletionThreshold(1);
-  this->setAutoCompletionSource(SonicPiScintilla::AcsAPIs);
-  this->setAutoCompletionCaseSensitivity(false);
+  setMarginsBackgroundColor(theme->color("MarginBackground"));
+  setMarginsForegroundColor(theme->color("MarginForeground"));
+  setMarginsFont(QFont("Menlo", 15, -1, true));
+  setUtf8(true);
+  setText("#loading...");
+  setLexer((QsciLexer *)lexer);
 
-  this->setSelectionBackgroundColor("DeepPink");
-  this->setSelectionForegroundColor("white");
-  this->setCaretWidth(5);
-  this->setCaretForegroundColor("deep pink");
-  this->setEolMode(EolUnix);
+  markerDefine(RightArrow, 8);
+  setMarkerBackgroundColor("deeppink", 8);
 
-  addKeyBinding(settings, QsciCommand::SelectionCopy, Qt::Key_C | SPi_META);
-  addOtherKeyBinding(settings, QsciCommand::SelectionCopy, Qt::Key_C | SPi_CTRL);
+  setAutoCompletionThreshold(1);
+  setAutoCompletionSource(SonicPiScintilla::AcsAPIs);
+  setAutoCompletionCaseSensitivity(false);
+
+  setSelectionBackgroundColor(theme->color("SelectionBackground"));
+  setSelectionForegroundColor(theme->color("SelectionForeground"));
+  setCaretWidth(5);
+  setCaretForegroundColor(theme->color("CaretForeground"));
+  setEolMode(EolUnix);
 
   SendScintilla(SCI_SETWORDCHARS, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:_?!");
 
 
 }
 
+void SonicPiScintilla::redraw(){
+  setMarginsBackgroundColor(theme->color("MarginBackground"));
+  setMarginsForegroundColor(theme->color("MarginForeground"));
+  setSelectionBackgroundColor(theme->color("SelectionBackground"));
+  setSelectionForegroundColor(theme->color("SelectionForeground"));
+  setCaretLineBackgroundColor(theme->color("CaretLineBackground"));
+  setFoldMarginColors(theme->color("FoldMarginForeground"),theme->color("FoldMarginForeground"));
+  setIndentationGuidesForegroundColor(theme->color("IndentationGuidesForeground"));
+  setMatchedBraceBackgroundColor(theme->color("MatchedBraceBackground"));
+  setMatchedBraceForegroundColor(theme->color("MatchedBraceForeground"));
+}
+
+void SonicPiScintilla::highlightAll(){
+  setCaretLineBackgroundColor("deeppink");
+}
+
+void SonicPiScintilla::unhighlightAll(){
+  setCaretLineBackgroundColor(theme->color("CaretLineBackground"));
+}
+
 void SonicPiScintilla::hideLineNumbers(){
-  this->setMarginLineNumbers(0, false);
-  this->setMarginWidth(0, "0");
+  setMarginLineNumbers(0, false);
+  setMarginWidth(0, "0");
   SendScintilla(SCI_HIDELINES);
 }
 
 void SonicPiScintilla::showLineNumbers(){
-  this->setMarginLineNumbers(0, true);
-  this->setMarginWidth(0, "1000");
+  setMarginLineNumbers(0, true);
+  setMarginWidth(0, "1000");
   SendScintilla(SCI_SHOWLINES);
 }
 
@@ -412,4 +436,22 @@ void SonicPiScintilla::downcaseWordOrSelection(){
     SendScintilla(SCI_LOWERCASE);
     deselect();
   }
+}
+
+void SonicPiScintilla::setLineErrorMarker(int lineNumber){
+
+  markerDeleteAll(-1);
+  markerAdd(lineNumber, 8);
+
+  // Perhaps consider a more manual way of returning this functionality:
+  // int currlinenum, index;
+  // getCursorPosition(&currlinenum, &index);
+  // if (lineNumber != currlinenum) {
+  //   setCursorPosition(lineNumber, 0);
+  // }
+
+}
+
+void SonicPiScintilla::clearLineMarkers(){
+  markerDeleteAll(-1);
 }

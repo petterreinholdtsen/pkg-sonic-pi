@@ -1,17 +1,17 @@
 4 Randomisierung
 
-# Randomisierung[^1]
+# Randomisierung[^9]
 
 Zufallszahlen sind eine tolle Möglichkeit, Deine Musik interessant zu 
 gestalten. Sonic Pi bietet einige Funktionen, um Zufallsfaktoren in 
-Deine Musik einzubauen; aber bevor wir starten, müssen wir noch einer 
+Deine Musik einzubauen. Aber bevor wir starten, müssen wir noch einer 
 schockierenden Wahrheit ins Gesicht sehen: In Sonic Pi bedeutet 
 *zufällig nicht wirklich zufällig*. Was zum Teufel soll das bedeuten? 
-Naja, sehen wir mal.
+Nun, das verrate ich Dir jetzt.
 
 ## Wiederholbarkeit
 
-Eine wirklich nützliche Zufallsfunktion ist `rrand`; sie liefert Dir 
+Eine wirklich nützliche Zufallsfunktion ist `rrand`. Sie liefert Dir 
 einen zufälligen Wert zwischen zwei Zahlen - einem *Minimal-* und einem 
 *Maximalwert*. (`rrand` ist ein Kürzel für das englische *ranged 
 random*, also eine Zufallszahl innerhalb eines bestimmten 
@@ -29,14 +29,13 @@ oder? Das kann doch kein Zufall sein!
 
 Die Antwort ist, es ist nicht wirklich zufällig, sondern 
 pseudo-zufällig. Sonic Pi liefert Dir Reihenfolgen von Zufallszahlen, 
-die wiederholbar sind. Das ist sehr nützlich, weil es sicherstellt, 
-dass die Musik, die Du auf Deinem Rechner erzeugst, auf anderen 
-Rechnern identisch klingt - sogar, wenn Du einen Zufallsfaktor 
-einbaust.
+die wiederholbar sind. Das ist sehr nützlich, denn so ist
+sichergestellt, dass die Musik von Deinem Rechner auf anderen Rechnern
+identisch klingt - sogar dann, wenn Du einen Zufallsfaktor einbaust.
 
 Klar, wenn in einem bestimmten Musikstück jedesmal die `77.4407` als 
 'zufällige' Zahl gewählt würde, dann wäre das nicht besonders 
-interessant. Aber so ist es auch nicht. Versuch' folgendes:
+interessant. Aber so ist es auch nicht. Versuch folgendes:
 
 ```
 loop do
@@ -50,15 +49,15 @@ Code-Durchgangs liefern Aufrufe von Zufallsfunktionen auch zufällige
 Werte. Der nächste Durchgang wird jedoch genau die selbe Folge von 
 Zufallswerten liefern und also auch genau gleich klingen. Es ist, als 
 ob der Code immer zu demselben Zeitpunkt zurückspringt, wenn 
-der Ausführen-Button geklickt wird. Es ist der Groundhog-Day[^2] der 
+der Ausführen-Button geklickt wird. Es ist der Groundhog-Day[^10] der 
 musikalischen Synthese.
 
 ## Ruhelose Glocken
 
-Eine großartige Illustration von Zufall in Aktion bieten das Beispiel 
-der ruhelosen Glocken, bei dem das Sample `:perc_bell` mit einer 
-zufälligen Samplerate und Pausenzeit in einer Schleife[^3] abgespielt 
-wird.
+Ein großartiges Beispiel von Zufall in Aktion bietet der
+"Haunted Bells"-Code. Die "ruhelosen Glocken" spielen das Sample
+`:perc_bell` mit einer zufälligen Samplerate und Pausenzeit
+in einer Endlosschleife[^11] ab:
 
 ```
 loop do
@@ -70,7 +69,7 @@ end
 ## Zufällig abschneiden (random cutoff)
 
 Ein anderes spannendes Beispiel für die Randomisierung ist das 
-zufällige Abschneiden[^4] eines Synth-Klangs. Der `:tb303`-Emulator ist 
+zufällige Abschneiden[^12] eines Synth-Klangs. Der `:tb303`-Emulator ist 
 ein guter Synth, um das auszuprobieren:
 
 ```
@@ -79,13 +78,13 @@ use_synth :tb303
 loop do
   play 50, release: 0.1, cutoff: rrand(60, 120)
   sleep 0.125
-  end
+end
 ```
 
 ## Startpunkt der Zufallsfolge (random seed)
 
 Was aber, wenn Du die Abfolge von Zufallszahlen, die Sonic Pi Dir 
-liefert, nicht magst? Nun, mit `use_random_seed`[^5] kannst Du 
+liefert, nicht magst? Nun, mit `use_random_seed`[^13] kannst Du 
 unterschiedliche Startpunkte für diese Folge angeben. Der 
 Standard-Startpunkt ist die 0. Wähle also einfach einen anderen 
 Startpunkt und mache eine andere Zufallserfahrung!
@@ -100,7 +99,7 @@ end
 ```
 
 Jedes Mal, wenn Du den Code ablaufen läßt, hörst Du dieselbe Folge von
-5 Tönen. Um eine andere Folge zu bekommen, setzte einfach einen anderen 
+5 Tönen. Um eine andere Folge zu bekommen, setze einfach einen anderen 
 Startpunkt:
 
 ```
@@ -111,19 +110,19 @@ use_random_seed 40
 end
 ```
 
-Nun wird eine andere Folge von 5 Tönen produziert. Indem Du den 
+Nun produziert Sonic Pi eine andere Folge von 5 Tönen. Indem Du den 
 Startpunkt wechselst und Dir die Ergebnisse anhörst, kannst Du eine 
-Folge finden, die Dir gefällt - und wenn Du das mit anderen teilst, 
-werden sie genau das hören, was auch Du gehört hast.
+Folge finden, die Dir gefällt - und wenn Du den Code dann an andere
+weitergibst, werden sie genau das hören, was auch Du gehört hast.
 
-Schauen wir uns noch eine andere nützlich Zufallsfunktion an.
+Schauen wir uns noch eine andere nützliche Zufallsfunktion an.
 
 ## Auswählen (choose)
 
 Häufig kommt es vor, dass man aus einer Liste von Dingen eines zufällig 
 auswählen möchte. Zum Beispiel möchte ich einen Ton aus der folgenden 
-Liste auswählen: 60, 65 oder 72. Das kannst Du mit `choose` erreichen. 
-Zuerst musst Du Deine Zahlen in eine Liste packen; dafür schreibst Du 
+Liste auswählen: 60, 65 oder 72. Dafür ist `choose` da. 
+Zuerst musst Du Deine Zahlen in eine Liste packen. Dafür schreibst Du 
 sie jeweils durch Kommata getrennt in eckige Klammern. Dann übergibst 
 Du diese Liste dem Kommando `choose`:
 
@@ -148,7 +147,7 @@ aber ohne diese Werte selbst; man sagt auch *exklusiv* dieser beiden
 Werte. Das bedeutet, dass sowohl der minimale als auch der maximale 
 Wert niemals ausgegeben werden, immer nur eine Zahl *zwischen* diesen 
 beiden Werten. Die Zahl wird immer eine Gleitkommazahl (engl. *Float*) 
-sein, also keine ganze Zahl, sondern eine mit einem Komma[^6]. Einige 
+sein, also keine ganze Zahl, sondern eine mit einem Komma[^14]. Einige 
 Beispiele für Gleitkommazahlen, die der wiederholte Aufruf von 
 `rrand(20, 110)` ausgeben könnte:
 
@@ -158,8 +157,8 @@ Beispiele für Gleitkommazahlen, die der wiederholte Aufruf von
 
 ## rrand_i
 
-Manchmal braucht man eine zufällige aber ganze Zahl, eben keine 
-Gleitkommazahl. Hier rettet einen `rrand_i`[^7]. Es funktioniert 
+Manchmal braucht man eine zufällige, aber ganze Zahl, eben keine 
+Gleitkommazahl. Hier rettet einen `rrand_i`[^15]. Es funktioniert 
 ähnlich `rrand`, kann jedoch auch den minimalen oder maximalen Wert, 
 den man übergeben hat, als mögliche Zufallszahl auswählen (man kann 
 auch sagen: es ist *inklusiv*, also nicht exklusive der Werte, mit 
@@ -195,11 +194,11 @@ zwischen 0 und einem angegebenen Maximalwert aus.
 Manchmal möchte man so tun, als würde man würfeln (engl. *to dice*) - 
 das ist ein Sonderfall von `rrand_i`, wobei der kleinste Wert immer 
 die 1 ist. Wenn man `dice` verwendet, muss man dabei immer bestimmen, 
-wieviele Seiten der Würfel hat. Ein normaler Würfel hat 6 Seiten, also 
+wie viele Seiten der Würfel hat. Ein normaler Würfel hat 6 Seiten, also 
 wird `dice(6)` entsprechend funktionieren und den Wert 1, 2, 3, 4, 5 
 oder 6 zurückgeben. Aber - angenommen wir befänden uns in einen 
 Fantasy-Rollenspiel - ist es Dir vielleicht lieber, wenn der Würfel 4 
-oder 12, 20 oder sogar 120 Seiten hat!
+oder 12, 20 oder sogar 120 Seiten hat!?
 
 ## one_in
 
@@ -212,31 +211,30 @@ gewürfelt wurde. `one_in(6)` wird also mit einer Wahrscheinlichkeit von
 sind sehr nützlich, wenn es um `if`-Anweisungen geht, die wir in einem 
 folgenden Kapitel dieses Tutorials besprechen.
 
-Jetzt los, bring' Deinen Code mit ein paar Zufälligkeiten
-durcheinander!
+Jetzt los, bring Deinen Code mit ein paar Zufälligkeiten durcheinander!
 
-[^1]: Randomisierung (engl. *Randomisation*) bedeutet hier, dass man 
+[^9]: Randomisierung (engl. *Randomisation*) bedeutet hier, dass man 
     eine Auswahl von Zahlen zufällig gestaltet, also jedesmal eine
     andere Zahl bekommt.
 
-[^2]: Im Film *Groundhog Day* (deutsch: *Und täglich grüßt das
+[^10]: Im Film *Groundhog Day* (deutsch: *Und täglich grüßt das
     Murmeltier*) erlebt Bill Murray immer wieder denselben Tag.
 
-[^3]: Ein Schleife wird mit dem Ausdruck `loop` eingeleitet. Alles was
+[^11]: Ein Schleife wird mit dem Ausdruck `loop` eingeleitet. Alles was
     innerhalb der Schleife steht, wird so oft wie angegeben oder
     unendlich oft wiederholt. 
 
-[^4]: In Sonic Pi wird das das Abschneiden oder Verkürzen mit dem
+[^12]: In Sonic Pi wird das das Abschneiden oder Verkürzen mit dem
     Ausdruck `cutoff` bezeichnet.
 
-[^5]: Das englische Wort *Seed* bedeutet im Deutschen *Keim* oder
+[^13]: Das englische Wort *Seed* bedeutet im Deutschen *Keim* oder
     *Samen*; hier wird es als *Startpunkt* übersetzt. 
 
-[^6]: Die Sache wird noch dadurch ein wenig komplizierter, dass im
+[^14]: Die Sache wird noch dadurch ein wenig komplizierter, dass im
     Englischen anstelle eines Kommas ein Punkt steht. Die Gleitkommazahl
     `5,978` ist also im Englischen die *Floating Point Number* (kurz:
     *Float*) `5.978`. Alle Zahlen mit Kommawerten werden also in Sonic
     Pi mit einem Punkt dargestellt.
 
-[^7]: Das kleine *i* in `rrand_i` steht für englisch *Integer* als eine
+[^15]: Das kleine *i* in `rrand_i` steht für englisch *Integer* als eine
     ganze Zahl im Unterschied zu den Gleitkommazahlen.

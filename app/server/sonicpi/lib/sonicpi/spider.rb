@@ -28,8 +28,9 @@ require_relative "version"
 require_relative "sthread"
 require_relative "oscval"
 require_relative "version"
-require_relative "settings"
+require_relative "config/settings"
 require_relative "preparser"
+
 #require_relative "oscevent"
 #require_relative "stream"
 
@@ -39,17 +40,21 @@ require 'thread'
 require 'fileutils'
 require 'set'
 require 'ruby-beautify'
-
+require 'securerandom'
+require 'active_support/core_ext/integer/inflections'
 
 module SonicPi
+  class Stop < StandardError ; end
+
   class Spider
 
     attr_reader :event_queue
     include Util
+    include ActiveSupport
 
     def initialize(hostname, port, msg_queue, max_concurrent_synths, user_methods)
-      @settings = Settings.new
-      @version = Version.new(2, 5, 0)
+      @settings = Config::Settings.new(user_settings_path)
+      @version = Version.new(2, 6, 0)
       @server_version = __server_version
       @life_hooks = LifeCycleHooks.new
       @msg_queue = msg_queue
@@ -67,6 +72,8 @@ module SonicPi
       @sync_real_sleep_time = 0.05
       @user_methods = user_methods
       @run_start_time = 0
+      @session_id = SecureRandom.uuid
+      @snippets = {}
 
       @gitsave = GitSave.new(project_path)
 
@@ -77,27 +84,90 @@ module SonicPi
           __handle_event event
         end
       end
+      __info "Welcome to Sonic Pi"
+      __info "Session #{@session_id[0..7]}"
+      date = Time.now
+      __info "#{date.strftime("%A")} #{date.day.ordinalize} #{date.strftime("%B, %Y")}"
+      __info "%02d:%02d, %s" % [date.hour, date.min, date.zone]
+
       __info "#{@version} Ready..."
+
+      __info [
+"Hello, somewhere in the world
+   the sun is shining
+   for you right now.",
+"Hello, it's lovely to see
+   you again. I do hope that
+   you're well.",
+"Turn your head towards the sun
+   and the shadows
+   will fall
+   behind you."].sample
+
+
+
+
       __print_version_outdated_info if @version < @server_version
 
+      load_snippets(snippets_path, true)
     end
+
 
 
     ## Not officially part of the API
     ## Probably should be moved somewhere else
 
-    def __server_version(url="http://sonic-pi.net/static/info/latest_version.txt")
-      return Version.new(0) if @settings.get(:no_update_checking)
+    def load_snippets(path=snippets_path, quiet=false)
+      path = File.expand_path(path)
+      Dir["#{path}/**/*.sps"].each do |p|
 
-      # Only check for updates at most once every 2 weeks
-      last_update = @settings.get(:last_update_check_time).to_i
-      if  (last_update > 0) &&
-          (Time.at(last_update) < Time.now)
-        two_weeks_in_seconds = 60 * 60 * 24 * 14
-        ts_2_weeks_later = Time.at(last_update + two_weeks_in_seconds)
-        return __local_cached_server_version if Time.now < ts_2_weeks_later
+        lines = File.readlines(p)
+        key = nil
+        completion = ""
+        point_line  = 0
+        point_index = 0
+
+        while (l = lines.shift) && !(l.start_with? "# --")
+          res = l.match /\# ?([_a-z]+):(.*)/
+          if res
+            k = res[1].strip
+            v = res[2].strip
+            if !v.empty?
+              case k
+              when "key"
+                key = v
+              when "point_line"
+                point_line = v.to_i
+              when "point_index"
+                point_index = v.to_i
+              end
+            end
+          end
+        end
+
+        if key
+          __info "Loading snippet #{key} in #{p}" unless quiet
+          completion = lines.join
+
+          __add_completion(key, completion, point_line, point_index)
+        end
       end
+    end
 
+    def __update_gui_version_info_now
+      v = __check_for_server_version_now
+      @msg_queue.push({:type => :version, :version => @version.to_s, :version_num =>  @version.to_i, :latest_version => v.to_s, :latest_version_num => v.to_i, :last_checked => __last_update_check})
+    end
+
+    def __current_version
+      @version
+    end
+
+    def __last_update_check
+      Time.at(last_update = @settings.get(:last_update_check_time).to_i)
+    end
+
+    def __check_for_server_version_now(url="http://sonic-pi.net/static/info/latest_version.txt")
       begin
         params = {:uuid => global_uuid,
                   :ruby_platform => RUBY_PLATFORM,
@@ -115,6 +185,21 @@ module SonicPi
       rescue
         __local_cached_server_version
       end
+    end
+
+    def __server_version(url="http://sonic-pi.net/static/info/latest_version.txt")
+      return Version.new(0) if @settings.get(:no_update_checking)
+
+      # Only check for updates at most once every 2 weeks
+      last_update = @settings.get(:last_update_check_time).to_i
+      if  (last_update > 0) &&
+          (Time.at(last_update) < Time.now)
+        two_weeks_in_seconds = 60 * 60 * 24 * 14
+        ts_2_weeks_later = Time.at(last_update + two_weeks_in_seconds)
+        return __local_cached_server_version if Time.now < ts_2_weeks_later
+      end
+
+      __check_for_server_version_now(url)
     end
 
     def __local_cached_server_version
@@ -238,8 +323,26 @@ module SonicPi
       delayed_messages << [m_type, m]
     end
 
-    def __error(s, e)
-      @msg_queue.push({:type => :error, :val => s.to_s, :jobid => __current_job_id, :jobinfo => __current_job_info, :backtrace => e.backtrace})
+    def __extract_line_of_error(e)
+      trace = e.backtrace
+      l = trace.find {|line| line.include?("in __spider_eval")}
+      unless l
+        return -1
+      else
+        m = l.match(/.*:([0-9]+):/)
+        if m
+          return m[1].to_i
+        else
+          return -1
+        end
+      end
+    end
+
+    def __error(e)
+      line = __extract_line_of_error(e)
+      err_msg = e.message
+      err_msg = "[Line #{line}] \n #{err_msg}" if line != -1
+      @msg_queue.push({type: :error, val: err_msg, backtrace: e.backtrace, jobid: __current_job_id, jobinfo: __current_job_info, line: line})
     end
 
     def __current_run_time
@@ -331,10 +434,66 @@ module SonicPi
       @msg_queue.push({type: "replace-buffer", buffer_id: id, val: content, line: 0, index: 0, first_line: 0})
     end
 
-    def __indent_lines(workspace_id, buf, start_line, finish_line, point_line, point_index)
+    def __add_completion(k, text, point_line_offset=0, point=0)
+      @snippets[k] = [text, point_line_offset, point]
+    end
+
+    def __snippet_completion?(text)
+      text = text.rstrip
+      @snippets.each do |k, v|
+        if text.end_with?(k) && ((text.length == k.length)  || (text[((k.length * -1) - 1)] == " "))
+          return [k, v]
+        end
+      end
+      return nil
+    end
+
+    def __complete_snippet_or_indent_lines(workspace_id, buf, start_line, finish_line, point_line, point_index)
+      orig_finish_line = finish_line
+      snippet_completion = false
       id = workspace_id.to_s
       buf = buf + "\n"
       buf_lines = buf.lines.to_a
+      if (start_line == finish_line)
+        completion_line = buf_lines[start_line].to_s.rstrip
+
+        c = __snippet_completion?(completion_line[0...point_index])
+        if c
+          snippet_completion = true
+          completion_key, val = *c
+          completion_text, point_line_offset, orig_new_point_index = *val
+          new_point_index = orig_new_point_index
+          orig_completion_lines = completion_text.lines.to_a
+          completion_line_pre = completion_line[0...(point_index - completion_key.length)]
+          completion_line_post = completion_line[point_index..-1]
+          completion_text = completion_line_pre + completion_text + completion_line_post
+          completion_lines = completion_text.lines.to_a
+          point_line = point_line + point_line_offset
+
+          buf_lines = buf_lines[0...start_line] + completion_lines + buf_lines[(start_line + 1)..-1]
+          new_point_line_content = buf_lines[point_line].to_s
+          new_point_line_content_len = new_point_line_content.length
+
+          if point_line_offset == 0
+            if new_point_index < 0
+              new_point_index = [0, completion_line_pre.length + orig_completion_lines[0].length + new_point_index + 1].max
+            else
+              new_point_index += completion_line_pre.length
+            end
+          else
+            if new_point_index < 0
+              new_point_index = [0, (new_point_line_content_len + new_point_index)].max
+            else
+
+              new_point_index = [new_point_index, buf_lines[point_line].to_s.length].min
+
+            end
+          end
+
+          point_index = new_point_index
+          finish_line = start_line + completion_lines.size - 1
+        end
+      end
 
       if (start_line <= point_line) && (point_line <= finish_line)
         manipulate_point = true
@@ -344,7 +503,7 @@ module SonicPi
 
         if buf_lines[point_line] =~ /^\s*$/
           #line is just whitespace, put in a dummy line so it gets autoindented
-          buf_lines[point_line] = "#dummy"
+          buf_lines[point_line] = "#dummy\n"
           dummy_line = true
         else
           dummy_line = false
@@ -358,7 +517,6 @@ module SonicPi
 
       # calculate amount of whitespace at start of beautified line
       beautiful_lines = beautiful.lines.to_a
-
       if manipulate_point
         if dummy_line
           # remove dummy line and extract leading whitespace
@@ -378,9 +536,8 @@ module SonicPi
           point_index = orig_point_line_ws_len if point_index < orig_point_line_ws_len
         end
       end
-
       indented_lines = beautiful_lines[start_line..finish_line].join
-
+      finish_line = orig_finish_line if snippet_completion
       @msg_queue.push({type: "replace-lines", buffer_id: id, val: indented_lines, start_line: start_line, finish_line: finish_line, point_line: point_line, point_index: point_index})
 
     end
@@ -441,7 +598,13 @@ module SonicPi
       path = project_path + "/" + filename
       content = filter_for_save(content)
       File.open(path, 'w') {|f| f.write(content) }
-      @gitsave.save!(filename, content)
+      begin
+        @gitsave.save!(filename, content, "#{@version} -- #{@session_id} -- ")
+      rescue Exception => e
+        ##TODO: remove this and ensure that git saving actually works
+        ##instead of cowardly hiding the issue!
+      end
+
     end
 
     def __disable_update_checker
@@ -467,7 +630,7 @@ module SonicPi
           num_running_jobs = reg_job(id, Thread.current)
           Thread.current.thread_variable_set :sonic_pi_thread_group, "job-#{id}"
           Thread.current.thread_variable_set :sonic_pi_spider_arg_bpm_scaling, true
-          Thread.current.thread_variable_set :sonic_pi_spider_sleep_mul, 1
+          Thread.current.thread_variable_set :sonic_pi_spider_sleep_mul, 1.0
           Thread.current.thread_variable_set :sonic_pi_spider_job_id, id
           Thread.current.thread_variable_set :sonic_pi_spider_job_info, info
           Thread.current.thread_variable_set :sonic_pi_spider_subthreads, Set.new
@@ -489,11 +652,30 @@ module SonicPi
           code = PreParser.preparse(code)
           eval(code, nil, info[:workspace] || 'eval', firstline)
           __schedule_delayed_blocks_and_messages!
+        rescue Stop => e
+          __no_kill_block do
+            __info("Stopping Run #{id}")
+          end
+        rescue SyntaxError => e
+          __no_kill_block do
+            _, line, message = *e.message.match(/\A.*:([0-9]+): (.*)/)
+            error_line = ""
+            if line
+              line = line.to_i
+              err_msg = "[Line #{line}] \n #{message}"
+              error_line = code.lines.to_a[line + 1] ||  ""
+            else
+              line = -1
+              err_msg = "\n #{e.message}"
+            end
+            @msg_queue.push({type: :job, jobid: id, action: :completed, jobinfo: info})
+            @msg_queue.push({type: :syntax_error, val: err_msg, error_line: error_line , jobid: id  , jobinfo: info, line: line})
+            __info("Syntax error in run #{id}. Code ignored.")
+          end
         rescue Exception => e
           __no_kill_block do
+            __error(e)
             @msg_queue.push({type: :job, jobid: id, action: :completed, jobinfo: info})
-            @msg_queue.push({type: :error, val: e.message, backtrace: e.backtrace, jobid: id  , jobinfo: info})
-
           end
         end
       end

@@ -45,7 +45,7 @@ module SonicPi
 
     def to_s
       if @dev
-        "#{@major}.#{@minor}.#{@patch}-#{@dev}"
+        "v#{@major}.#{@minor}.#{@patch}-#{@dev}"
       else
         if @patch == 0
           "v#{@major}.#{@minor}"
@@ -94,6 +94,12 @@ module SonicPi
 
     def dev?
       !!@dev
+    end
+
+    def to_i
+      res = (@major * 1000) + (@minor * 100) + (@patch * 10)
+      res += 1 unless @dev
+      return res
     end
   end
 end

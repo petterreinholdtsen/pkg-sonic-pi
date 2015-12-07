@@ -14,6 +14,8 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
+#include <QSplitter>
+#include <QDate>
 #include <QMainWindow>
 #include <QDialog>
 #include <QLabel>
@@ -22,6 +24,7 @@
 #include <QRadioButton>
 #include <QListWidgetItem>
 #include <QListWidget>
+#include <QVBoxLayout>
 #include <QProcess>
 #include <QFuture>
 #include <QShortcut>
@@ -51,7 +54,7 @@ class SonicPiServer;
 struct help_page {
   QString title;
   QString keyword;
-  QString filename;
+  QString url;
 };
 
 struct help_entry {
@@ -65,13 +68,15 @@ class MainWindow : public QMainWindow
 
 public:
 #if defined(Q_OS_MAC)
-    MainWindow(QApplication &ref, QMainWindow* splash);
+    MainWindow(QApplication &ref, bool i18n, QMainWindow* splash);
 #else
-    MainWindow(QApplication &ref, QSplashScreen* splash);
+    MainWindow(QApplication &ref, bool i18n, QSplashScreen* splash);
 #endif
     void invokeStartupError(QString msg);
     SonicPiServer *sonicPiServer;
     enum {UDP=0, TCP=1};
+    QCheckBox *dark_mode;
+    bool loaded_workspaces;
 
 protected:
     void closeEvent(QCloseEvent *event);
@@ -79,12 +84,14 @@ protected:
 
 private slots:
     void changeTab(int id);
-  void printAsciiArtLogo();
+    QString asciiArtLogo();
+    void printAsciiArtLogo();
     void unhighlightCode();
     void runCode();
     void update_mixer_invert_stereo();
     void update_mixer_force_mono();
     void update_check_updates();
+    void check_for_updates_now();
     void enableCheckUpdates();
     void disableCheckUpdates();
     void stopCode();
@@ -115,13 +122,13 @@ private slots:
     void setRPSystemAudioHeadphones();
     void setRPSystemAudioHDMI();
     void changeShowLineNumbers();
+    void toggleDarkMode();
+    void updateDarkMode();
     void showPrefsPane();
     void updateDocPane(QListWidgetItem *cur);
     void updateDocPane2(QListWidgetItem *cur, QListWidgetItem *prev);
     void serverStarted();
     void splashClose();
-    void serverError(QProcess::ProcessError error);
-    void serverFinished(int exitCode, QProcess::ExitStatus exitStatus);
     void startupError(QString msg);
     void replaceBuffer(QString id, QString content, int line, int index, int first_line);
     void replaceLines(QString id, QString content, int first_line, int finish_line, int point_line, int point_index);
@@ -134,8 +141,24 @@ private slots:
     void docScrollUp();
     void docScrollDown();
     void helpClosed(bool visible);
+    void updateFullScreenMode();
+    void toggleFullScreenMode();
+    void updateFocusMode();
+    void toggleFocusMode();
+    void updateLogVisibility();
+    void toggleLogVisibility();
+    void updateTabsVisibility();
+    void toggleTabsVisibility();
+    void updateButtonVisibility();
+    void toggleButtonVisibility();
+    void setLineMarkerinCurrentWorkspace(int num);
+    void setUpdateInfoText(QString t);
+    void updateVersionNumber(QString version, int version_num, QString latest_version, int latest_version_num, QDate last_checked_date);
+    void requestVersion();
+    void open_sonic_pi_net();
 
 private:
+
     QSignalMapper *signalMapper;
     void startServer();
     void waitForServiceSync();
@@ -156,7 +179,7 @@ private:
     void sendOSC(oscpkt::Message m);
     void initPrefsWindow();
     void initDocsWindow();
-    void setHelpText(QListWidgetItem *item, const QString filename);
+    void refreshDocContent();
     void addHelpPage(QListWidget *nameList, struct help_page *helpPages,
                      int len);
     QListWidget *createHelpTab(QString name);
@@ -167,6 +190,8 @@ private:
     char int2char(int i);
     void setupAction(QAction *action, char key, QString tooltip,
 		     const char *slot);
+    QString tooltipStrShiftMeta(char key, QString str);
+    QString tooltipStrMeta(char key, QString str);
     QString readFile(QString name);
     QString rootPath();
 
@@ -176,10 +201,10 @@ private:
     QFuture<void> osc_thread, server_thread;
     int protocol;
 
+    bool focusMode;
     bool startup_error_reported;
     bool is_recording;
     bool show_rec_icon_a;
-    bool loaded_workspaces;
     QTimer *rec_flash_timer;
 
 #ifdef Q_OS_MAC
@@ -188,29 +213,29 @@ private:
     QSplashScreen* splash;
 #endif
 
+    bool i18n;
     static const int workspace_max = 10;
     SonicPiScintilla *workspaces[workspace_max];
     QWidget *prefsCentral;
     QTabWidget *docsCentral;
     QTextEdit *outputPane;
-    QTextEdit *errorPane;
+    QTextBrowser *errorPane;
     QDockWidget *outputWidget;
     QDockWidget *prefsWidget;
     QDockWidget *hudWidget;
     QDockWidget *docWidget;
     QTextBrowser *docPane;
-    QTextBrowser *hudPane;
+//  QTextBrowser *hudPane;
+    QWidget *mainWidget;
     bool hidingDocPane;
+    bool restoreDocPane;
 
     QTabWidget *tabs;
+    QTabWidget *prefTabs;
 
     QProcess *serverProcess;
 
     SonicPiLexer *lexer;
-
-    QMenu *fileMenu;
-    QMenu *editMenu;
-    QMenu *helpMenu;
 
     QToolBar *toolBar;
 
@@ -221,32 +246,45 @@ private:
     QCheckBox *print_output;
     QCheckBox *check_args;
     QCheckBox *clear_output_on_run;
+    QCheckBox *log_cues;
     QCheckBox *show_line_numbers;
+    QCheckBox *full_screen;
+    QCheckBox *show_log;
+    QCheckBox *show_buttons;
+    QCheckBox *show_tabs;
     QCheckBox *check_updates;
+    QPushButton *check_updates_now;
+    QPushButton *visit_sonic_pi_net;
+    QLabel *update_info;
 
     QRadioButton *rp_force_audio_hdmi;
     QRadioButton *rp_force_audio_default;
     QRadioButton *rp_force_audio_headphones;
     QSlider *rp_system_vol;
 
-    QAction *aboutQtAct;
-    QMap<QString, QString> *map;
-
-    QTextBrowser *infoPane;
     QWidget *infoWidg;
+    QList<QTextBrowser *> infoPanes;
     QTextEdit *startupPane;
-    QLabel *imageLabel;
-
-    int currentLine;
-    int currentIndex;
+    QVBoxLayout *mainWidgetLayout;
 
     QList<QListWidget *> helpLists;
     QHash<QString, help_entry> helpKeywords;
     std::streambuf *coutbuf;
+#if defined(Q_OS_WIN) || defined(Q_OS_MAC)
     std::ofstream stdlog;
+#endif
 
     SonicPiAPIs *autocomplete;
     QString sample_path, log_path;
+    QString defaultTextBrowserStyle;
+
+    QString version;
+    int version_num;
+    QString latest_version;
+    int latest_version_num;
+
+    QSplitter *docsplit;
+
 };
 
 #endif

@@ -36,12 +36,29 @@ Dir["#{File.expand_path("../vendor", __FILE__)}/*/lib/"].each do |vendor_lib|
   $:.unshift vendor_lib
 end
 
-require 'did_you_mean' unless RUBY_VERSION < "2.0.0"
+begin
+  require 'did_you_mean'
+rescue LoadError
+  warn "Could not load did_you_mean"
+end
 
 require 'osc-ruby'
+require 'hamster/vector'
 
 module SonicPi
   module Core
+    module TLMixin
+      def tick(*args)
+        idx = SonicPi::Core::ThreadLocalCounter.tick(*args)
+        self[idx]
+      end
+
+      def look(*args)
+        idx = SonicPi::Core::ThreadLocalCounter.look(*args)
+        self[idx]
+      end
+    end
+
     module ThreadLocalCounter
       def self.get_or_create_counters
         counters = Thread.current.thread_variable_get(:sonic_pi_core_thread_local_counters)
@@ -51,31 +68,67 @@ module SonicPi
         counters
       end
 
-      def self.tick(k, n=1)
+      def self.tick(k = :___sonic_pi_default_tick_key___, *args)
+        k = (k && k.is_a?(String)) ? k.to_sym : k
+        if k.is_a? Symbol
+          opts = args.first || {}
+        else
+          opts = k
+          k = :___sonic_pi_default_tick_key___
+        end
+
+        raise "Tick key must be a symbol, got #{k.class}: #{k.inspect}" unless k.is_a? Symbol
+        raise "Tick opts must be key value pairs, got: #{opts.inspect}" unless opts.is_a? Hash
+        step = opts[:step] || 1
+        offset = opts[:offset] || 0
         counters = get_or_create_counters
         if counters[k]
-          current_val = counters[k]
-          counters[k] = counters[k] + n
-          return current_val
+          curr_val, next_val = *counters[k]
+          counters[k] = [next_val + step-1, next_val + step]
+          return next_val + step-1 + offset
         else
-          counters[k] = n
-          return 0
+          counters[k] = [step-1, step]
+          return step-1 + offset
         end
       end
 
-      def self.read(k)
+      def self.look(k = :___sonic_pi_default_tick_key___, *args)
+        k = (k && k.is_a?(String)) ? k.to_sym : k
+        if k.is_a? Symbol
+          opts = args.first || {}
+        else
+          opts = k
+          k = :___sonic_pi_default_tick_key___
+        end
+
+        raise "Tick key must be a symbol, got #{k.class}: #{k.inspect}" unless k.is_a? Symbol
+        offset = opts[:offset] || 0
         counters = get_or_create_counters
-        counters[k] || 0
+        val, _ = *counters[k]
+        return (val || 0) + offset
       end
 
-      def self.set(k, v)
+      def self.set(k=:___sonic_pi_default_tick_key___, v)
+        if k.is_a? Numeric
+          v = k
+          k = :___sonic_pi_default_tick_key___
+        end
+        raise "Tick key must be a symbol, got #{k.class}: #{k.inspect}" unless k.is_a? Symbol
+        raise "Tick value must be a number, got #{v.class}: #{v.inspect}" unless v.is_a? Numeric
         counters = get_or_create_counters
-        counters[k] = v
+        counters[k] = [v, v]
+        v
       end
 
-      def self.rm(k)
+      def self.rm(k=:___sonic_pi_default_tick_key___)
+        raise "Tick key must be a symbol, got #{k.class}: #{k.inspect}" unless k.is_a? Symbol
         counters = get_or_create_counters
         counters.delete(k)
+        nil
+      end
+
+      def self.reset_all
+        Thread.current.thread_variable_set(:sonic_pi_core_thread_local_counters, {})
         nil
       end
     end
@@ -85,38 +138,47 @@ end
 
 module SonicPi
   module Core
-    class RingArray < Array
-      def [](idx, len=nil)
-        return self.to_a[idx, len] if len
+    class EmptyVectorError < StandardError ; end
 
-        idx = idx.to_i % size if idx.is_a? Numeric
-        self.to_a[idx]
+    class SPVector < Hamster::Vector
+      include TLMixin
+      def initialize(list)
+        raise EmptyVectorError, "Cannot create an empty vector" if list.empty?
+        super
       end
 
-      # TODO - ensure this returns a ring array
-      def slice(idx, len=nil)
-        return self.to_a.slice(idx, len) if len
+      def ___sp_vector_name
+        "vector"
+      end
 
-        idx = idx.to_i % size if idx.is_a? Numeric
-        self.to_a.slice(idx)
+      def ___sp_preserve_vec_kind(a)
+        self.class.new(a)
+      end
+
+      def [](idx, len=(missing_length = true))
+        if idx.is_a?(Numeric) && missing_length
+          idx = map_index(idx)
+          super idx
+        else
+          if missing_length
+            super(idx)
+          else
+            super(idx, len)
+          end
+        end
+      end
+
+      def choose
+        rgen = Thread.current.thread_variable_get :sonic_pi_spider_random_generator
+        self[rgen.rand(self.size)]
       end
 
       def ring
-        self
+        SonicPi::Core::RingVector.new(self)
       end
 
-      def to_a
-        Array.new(self)
-      end
-
-      def tick(key, n=1)
-        idx = ThreadLocalCounter.tick(key, n)
-        self[idx]
-      end
-
-      def hook(key, *args)
-        idx = ThreadLocalCounter.read(key)
-        self[idx]
+      def ramp
+        SonicPi::Core::RampVector.new(self)
       end
 
       def to_s
@@ -126,13 +188,49 @@ module SonicPi
       def inspect
         a = self.to_a
         if a.empty?
-          "(ring)"
+          "(#{___sp_vector_name})"
         else
-          "(ring #{a.inspect[1...-1]})"
+          "(#{___sp_vector_name} #{a.inspect[1...-1]})"
         end
       end
 
-      #TODO:    def each_with_ring
+      def to_a
+        Array.new(self)
+      end
+
+      def stretch(num_its)
+        res = []
+        self.each do |v|
+          num_its.times do
+            res << v
+          end
+        end
+        ___sp_preserve_vec_kind(res)
+      end
+    end
+
+    class RingVector < SPVector
+      def map_index(idx)
+        idx = idx % size
+        return idx
+      end
+
+      def ___sp_vector_name
+        "ring"
+      end
+    end
+
+    class RampVector < SPVector
+      def map_index(idx)
+        idx = idx.to_i
+        idx = [idx, size - 1].min
+        idx = [idx, 0].max
+        return idx
+      end
+
+      def ___sp_vector_name
+        "ramp"
+      end
     end
   end
 end
@@ -141,6 +239,10 @@ end
 class String
   def shuffle
     self.chars.to_a.shuffle.join
+  end
+
+  def ring
+    self.chars.ring
   end
 end
 
@@ -159,6 +261,10 @@ end
 class Symbol
   def shuffle
     self.to_s.shuffle.to_sym
+  end
+
+  def ring
+    self.to_s.ring
   end
 end
 
@@ -539,9 +645,14 @@ if RUBY_VERSION < "2"
 end
 
 class Array
+  include SonicPi::Core::TLMixin
 
   def ring
-    SonicPi::Core::RingArray.new(self)
+    SonicPi::Core::RingVector.new(self)
+  end
+
+  def ramp
+    SonicPi::Core::RampVector.new(self)
   end
 
   def choose
@@ -568,19 +679,18 @@ class Array
       __orig_shuffle__ *args, &blk
     end
   end
-end
 
-class String
-  def ring
-    self.chars.ring
+  alias_method :__orig_shuffle_bang__, :shuffle!
+  def shuffle!(*args, &blk)
+    rgen = Thread.current.thread_variable_get :sonic_pi_spider_random_generator
+    if rgen
+      __orig_shuffle_bang__(random: rgen)
+    else
+      __orig_shuffle_bang__ *args, &blk
+    end
   end
 end
 
-class Symbol
-  def ring
-    self.to_s.ring
-  end
-end
 
 
 # Meta-glasses from our hero Why to help us
@@ -591,8 +701,12 @@ class Object
     self.to_a.ring
   end
 
-  def tick(k)
-    self.ring.tick(k)
+  def tick(*args)
+    self.to_a.tick(*args)
+  end
+
+  def look(*args)
+    self.to_a.look(*args)
   end
 
   # The hidden singleton lurks behind everyone
