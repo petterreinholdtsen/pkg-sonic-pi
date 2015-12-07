@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: Hanno Zulla <hanno@esprimo>
 Build-Depends: debhelper (>= 9), cmake, pkg-config, qt5-default, qttools5-dev, qttools5-dev-tools, libffi-dev, libqt5scintilla2-dev, ruby, ruby-all-dev
 Standards-Version: 3.9.6
-Homepage: http://sonic-pi.net
+Homepage: http://sonic-pi.net/
 
 Package: sonic-pi
 Architecture: any
