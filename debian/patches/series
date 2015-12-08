@@ -4,3 +4,4 @@
 04-paths.patch
 05-use-debian-ruby.patch
 06-remove-rpi-volume.patch
+07-jackd-notice.patch

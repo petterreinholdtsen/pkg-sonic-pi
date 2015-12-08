@@ -11,6 +11,7 @@ app/server/vendor                    usr/lib/sonic-pi/server
 etc/synthdefs/compiled               usr/share/sonic-pi/synthdefs
 etc/snippets                         usr/share/sonic-pi
 
+README-JACKD                         usr/share/doc/sonic-pi-server
 etc/doc/*                            usr/share/doc/sonic-pi-server
 app/gui/qt/images/tutorial           usr/share/doc/sonic-pi-server/tutorial/images
 etc/synthdefs/graphviz/pdf/*         usr/share/doc/sonic-pi-server/synthdefs

@@ -8,7 +8,7 @@ Homepage: http://sonic-pi.net/
 
 Package: sonic-pi
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, sonic-pi-server, libqt5scintilla2-12v5 | libqt5scintilla2-11, libqt5scintilla2-l10n, libqt5core5a, libqt5network5, libqt5concurrent5, libqt5gui5, libqt5widgets5
+Depends: ${shlibs:Depends}, ${misc:Depends}, sonic-pi-server, libqt5scintilla2-12v5 | libqt5scintilla2-11, libqt5scintilla2-l10n, libqt5core5a, libqt5network5, libqt5concurrent5, libqt5gui5, libqt5widgets5, alsa-utils
 Description: Qt-based IDE for Sonic Pi
  A free live coding synth for everyone originally designed to support
  computing and music lessons within schools. Use code to compose and

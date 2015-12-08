@@ -1,6 +1,13 @@
-sonic-pi (2.8.0-0ppa1~wily7) wily; urgency=low
+sonic-pi (2.8.0-0ppa1~trusty8) trusty; urgency=low
 
-  * fix compatability of ruby build script for Ubuntu 14.04 Trusty
+  * added README-JACKD
+  * added dependency on alsa-utils
+
+ -- Hanno Zulla <kontakt@hanno.de>  Tue, 01 Dec 2015 11:43:00 +0100
+
+sonic-pi (2.8.0-0ppa1~trusty7) trusty; urgency=low
+
+  * fix compatibility of ruby build script for Ubuntu 14.04 Trusty
 
  -- Hanno Zulla <kontakt@hanno.de>  Tue, 01 Dec 2015 11:43:00 +0100
 
@@ -13,7 +20,7 @@ sonic-pi (2.8.0-0ppa1~trusty6) trusty; urgency=low
 
 sonic-pi (2.8.0-0ppa1~trusty5) trusty; urgency=low
 
-  * fix compatability of ruby build script for Ubuntu 14.04 Trusty
+  * fix compatibility of ruby build script for Ubuntu 14.04 Trusty
 
  -- Hanno Zulla <kontakt@hanno.de>  Fri, 27 Nov 2015 13:02:00 +0100
 
