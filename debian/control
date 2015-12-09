@@ -4,13 +4,31 @@ Priority: optional
 Maintainer: Hanno Zulla <kontakt@hanno.de>
 Uploaders: Georges Khaznadar <georgesk@debian.org>,
  Petter Reinholdtsen <pere@debian.org>
-Build-Depends: debhelper (>= 9), cmake, pkg-config, qt5-default, qttools5-dev, qttools5-dev-tools, libffi-dev, libqt5scintilla2-dev, ruby, ruby-all-dev
+Build-Depends: debhelper (>= 9),
+ cmake,
+ pkg-config,
+ qt5-default,
+ qttools5-dev,
+ qttools5-dev-tools,
+ libffi-dev,
+ libqt5scintilla2-dev,
+ ruby,
+ ruby-all-dev
 Standards-Version: 3.9.6
 Homepage: http://sonic-pi.net/
 
 Package: sonic-pi
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, sonic-pi-server, libqt5scintilla2-12v5 | libqt5scintilla2-11, libqt5scintilla2-l10n, libqt5core5a, libqt5network5, libqt5concurrent5, libqt5gui5, libqt5widgets5, alsa-utils
+Depends: ${shlibs:Depends}, ${misc:Depends},
+ sonic-pi-server,
+ libqt5scintilla2-12v5 | libqt5scintilla2-11,
+ libqt5scintilla2-l10n,
+ libqt5core5a,
+ libqt5network5,
+ libqt5concurrent5,
+ libqt5gui5,
+ libqt5widgets5,
+ alsa-utils
 Description: Qt-based IDE for Sonic Pi
  A free live coding synth for everyone originally designed to support
  computing and music lessons within schools. Use code to compose and
@@ -19,7 +37,13 @@ Description: Qt-based IDE for Sonic Pi
 
 Package: sonic-pi-server
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, ruby, sonic-pi-samples, supercollider-server, supercollider-sc3-plugins, jackd2, libffi6
+Depends: ${shlibs:Depends}, ${misc:Depends},
+ ruby,
+ sonic-pi-samples,
+ supercollider-server,
+ supercollider-sc3-plugins,
+ jackd2,
+ libffi6
 Description: Live Coding for Everyone
  A free live coding synth for everyone originally designed to support
  computing and music lessons within schools. Use code to compose and
